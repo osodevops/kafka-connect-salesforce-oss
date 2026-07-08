@@ -64,16 +64,16 @@ docker compose exec kafka /opt/kafka/bin/kafka-console-consumer.sh \
   --bootstrap-server localhost:19092 --topic salesforce.Account --from-beginning
 ```
 
-Full walkthrough (Connected App setup, OAuth flows, connector configs): **[the documentation](https://osodevops.github.io/kafka-connect-salesforce-oss/)**.
+Full walkthrough (Connected App setup, OAuth flows, connector configs): **[the documentation](https://salesforcekafkaconnector.com/)**.
 
 ## The connectors
 
 | Connector | Direction | Salesforce APIs |
 |---|---|---|
-| **Source** ([docs](https://osodevops.github.io/kafka-connect-salesforce-oss/connectors/source)) | Salesforce → Kafka | Pub/Sub API (CDC + Platform Events), Bulk API 2.0, REST |
-| **SObject Sink** ([docs](https://osodevops.github.io/kafka-connect-salesforce-oss/connectors/sobject-sink)) | Kafka → Salesforce | Bulk API 2.0, REST Composite |
-| **Platform Event Sink** ([docs](https://osodevops.github.io/kafka-connect-salesforce-oss/connectors/platform-event-sink)) | Kafka → Salesforce | Pub/Sub API Publish, REST |
-| **Streaming Source** ([docs](https://osodevops.github.io/kafka-connect-salesforce-oss/connectors/streaming-source)) | Salesforce → Kafka | Streaming API (legacy CometD) |
+| **Source** ([docs](https://salesforcekafkaconnector.com/connectors/source)) | Salesforce → Kafka | Pub/Sub API (CDC + Platform Events), Bulk API 2.0, REST |
+| **SObject Sink** ([docs](https://salesforcekafkaconnector.com/connectors/sobject-sink)) | Kafka → Salesforce | Bulk API 2.0, REST Composite |
+| **Platform Event Sink** ([docs](https://salesforcekafkaconnector.com/connectors/platform-event-sink)) | Kafka → Salesforce | Pub/Sub API Publish, REST |
+| **Streaming Source** ([docs](https://salesforcekafkaconnector.com/connectors/streaming-source)) | Salesforce → Kafka | Streaming API (legacy CometD) |
 
 All Salesforce protocol logic lives in the shared **`sf-core`** library; the connectors stay thin.
 
@@ -92,7 +92,7 @@ tools/confluent-migration/verify_cutover.py --sobject Account \
   --since "$T0" --topic-dump dump.tsv
 ```
 
-The zero-loss cutover procedure is executed in CI on every build, publishing a `migration-evidence` artifact (event counts, SHA-256 digests, replayId continuity). See the **[migration guide](https://osodevops.github.io/kafka-connect-salesforce-oss/migration/confluent)**.
+The zero-loss cutover procedure is executed in CI on every build, publishing a `migration-evidence` artifact (event counts, SHA-256 digests, replayId continuity). See the **[migration guide](https://salesforcekafkaconnector.com/migration/confluent)**.
 
 ## Testing
 
@@ -105,7 +105,7 @@ mvn clean verify -DskipE2E    # without Docker
 
 ## Documentation
 
-Docs are built with Docusaurus from [`website/`](website/) and served at **[osodevops.github.io/kafka-connect-salesforce-oss](https://osodevops.github.io/kafka-connect-salesforce-oss/)** (moving to salesforcekafkaconnector.com). Design/clean-room documents live in [`docs/`](docs/).
+Docs are built with Docusaurus from [`website/`](website/) and served at **[salesforcekafkaconnector.com](https://salesforcekafkaconnector.com/)**. Design/clean-room documents live in [`docs/`](docs/).
 
 ## Contributing
 
@@ -113,7 +113,7 @@ We welcome contributions of all kinds!
 
 - **Report Bugs:** Found a bug? Open an [issue on GitHub](https://github.com/osodevops/kafka-connect-salesforce-oss/issues).
 - **Suggest Features:** Have an idea? [Open a feature request](https://github.com/osodevops/kafka-connect-salesforce-oss/issues/new).
-- **Contribute Code:** Check out our [good first issues](https://github.com/osodevops/kafka-connect-salesforce-oss/labels/good%20first%20issue) for beginner-friendly tasks — the [local testing guide](https://osodevops.github.io/kafka-connect-salesforce-oss/development/local-testing) gets you a full fake-Salesforce dev loop with no Salesforce org.
+- **Contribute Code:** Check out our [good first issues](https://github.com/osodevops/kafka-connect-salesforce-oss/labels/good%20first%20issue) for beginner-friendly tasks — the [local testing guide](https://salesforcekafkaconnector.com/development/local-testing) gets you a full fake-Salesforce dev loop with no Salesforce org.
 - **Improve Docs:** The site lives in [`website/`](website/) — docs pull requests are very welcome.
 
 Releases use [conventional commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, …) — release-please turns them into versions and changelogs automatically.

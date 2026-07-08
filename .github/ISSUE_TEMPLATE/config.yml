@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Documentation
+    url: https://salesforcekafkaconnector.com
+    about: Configuration references, guides, and the Confluent migration runbook
+  - name: Security vulnerability
+    url: https://github.com/osodevops/kafka-connect-salesforce-oss/security/advisories/new
+    about: Please report security issues privately

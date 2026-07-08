@@ -1,8 +1,13 @@
 package sh.oso.salesforce.source;
 
-/** Connector version, kept in sync with the Maven build. */
+/** Connector version, read from the jar manifest (Implementation-Version set by the build). */
 final class Version {
-    static final String VERSION = "0.1.0";
+    static final String VERSION = resolve();
+
+    private static String resolve() {
+        String version = Version.class.getPackage().getImplementationVersion();
+        return version != null ? version : "unknown";
+    }
 
     private Version() {
     }

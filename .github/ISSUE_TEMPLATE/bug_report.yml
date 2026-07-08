@@ -1,0 +1,47 @@
+name: Bug report
+description: Something isn't working
+labels: [bug]
+body:
+  - type: input
+    id: connector-version
+    attributes:
+      label: Connector version
+      placeholder: e.g. 0.1.0
+    validations:
+      required: true
+  - type: input
+    id: kafka-version
+    attributes:
+      label: Kafka / Kafka Connect version
+      placeholder: e.g. Kafka 3.9.0, Connect distributed
+    validations:
+      required: true
+  - type: dropdown
+    id: connector
+    attributes:
+      label: Which connector?
+      options:
+        - Source (Pub/Sub + Bulk 2.0)
+        - SObject Sink
+        - Platform Event Sink
+        - Streaming Source (CometD)
+        - sf-core / other
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: Connector configuration
+      description: Redact credentials! (sf.consumer.key/secret etc.)
+      render: json
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output
+      render: text

@@ -1,0 +1,27 @@
+# Salesforce Kafka Connector
+> Open-source (Apache-2.0) Salesforce connectors for Apache Kafka Connect: real-time CDC streaming via the Salesforce Pub/Sub API, Bulk API 2.0 snapshots and sinks, and Platform Event publishing. The open-source alternative to Confluent's proprietary Salesforce connectors, by OSO.
+
+## Core Documentation
+- [Introduction](https://salesforcekafkaconnector.com/): what the suite is and which connector to use
+- [Getting Started](https://salesforcekafkaconnector.com/getting-started): installation and Salesforce Connected App setup
+- [Quickstart](https://salesforcekafkaconnector.com/getting-started/quickstart): docker compose walkthrough
+
+## Connectors
+- [Source Connector](https://salesforcekafkaconnector.com/connectors/source): Salesforce to Kafka - Pub/Sub API CDC streaming, Bulk API 2.0 snapshot with zero-loss handoff, polling mode
+- [SObject Sink](https://salesforcekafkaconnector.com/connectors/sobject-sink): Kafka to Salesforce - insert/update/external-ID upsert/delete, Big Objects, DLQ
+- [Platform Event Sink](https://salesforcekafkaconnector.com/connectors/platform-event-sink): publish Kafka records as Salesforce Platform Events
+- [Streaming Source](https://salesforcekafkaconnector.com/connectors/streaming-source): legacy CometD fallback for orgs without Pub/Sub API
+
+## Concepts & Operations
+- [Architecture](https://salesforcekafkaconnector.com/concepts/architecture)
+- [Salesforce Change Data Capture to Kafka](https://salesforcekafkaconnector.com/salesforce-change-data-capture)
+- [Delivery Semantics](https://salesforcekafkaconnector.com/concepts/delivery-semantics): at-least-once, dedup, ordering
+- [Offsets & Recovery](https://salesforcekafkaconnector.com/concepts/offsets-and-recovery): replayIds, 72h retention, gap recovery
+- [Rate Limits](https://salesforcekafkaconnector.com/concepts/rate-limits): staying inside Salesforce API quotas
+
+## Migration
+- [Migrating from Confluent](https://salesforcekafkaconnector.com/migration/confluent): config translation script, zero-loss cutover, verifiable evidence
+
+## Project
+- [GitHub](https://github.com/osodevops/kafka-connect-salesforce-oss)
+- [Maven Central](https://central.sonatype.com/namespace/sh.oso): groupId sh.oso

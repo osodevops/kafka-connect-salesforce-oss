@@ -1,0 +1,12 @@
+kafka-connect-salesforce
+Copyright 2026 OSO (oso.sh)
+
+This product includes software developed at OSO (https://oso.sh).
+
+This is an independent open-source project and is not affiliated with, endorsed, or
+sponsored by Salesforce, Inc. or the Apache Software Foundation. Salesforce is a
+trademark of Salesforce, Inc. Apache, Apache Kafka, and Kafka are trademarks of the
+Apache Software Foundation.
+
+The Salesforce Pub/Sub API protocol definition (sf-core/src/main/proto/pubsub_api.proto)
+is published by Salesforce under CC0-1.0 (https://github.com/forcedotcom/pub-sub-api).
