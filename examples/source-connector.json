@@ -1,0 +1,17 @@
+{
+  "name": "salesforce-source",
+  "config": {
+    "connector.class": "sh.oso.salesforce.source.SalesforceSourceConnector",
+    "tasks.max": "2",
+    "sf.auth.grant.type": "client_credentials",
+    "sf.instance.url": "https://YOUR_DOMAIN.my.salesforce.com",
+    "sf.consumer.key": "${file:/secrets/sf.properties:consumer.key}",
+    "sf.consumer.secret": "${file:/secrets/sf.properties:consumer.secret}",
+    "sf.sobjects": "Account,Contact,Opportunity",
+    "sf.topic.prefix": "salesforce",
+    "sf.snapshot.enabled": "true",
+    "sf.realtime.mode": "event_driven",
+    "sf.emit.tombstone.on.delete": "false",
+    "sf.gap.recovery": "resync"
+  }
+}

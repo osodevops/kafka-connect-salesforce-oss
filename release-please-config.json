@@ -1,0 +1,13 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "maven",
+  "include-v-in-tag": true,
+  "include-component-in-tag": false,
+  "packages": {
+    ".": {
+      "package-name": "kafka-connect-salesforce",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": []
+    }
+  }
+}

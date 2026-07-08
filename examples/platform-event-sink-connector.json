@@ -1,0 +1,17 @@
+{
+  "name": "salesforce-platform-event-sink",
+  "config": {
+    "connector.class": "sh.oso.salesforce.pesink.SalesforcePlatformEventSinkConnector",
+    "tasks.max": "1",
+    "topics": "orders.shipped",
+    "sf.auth.grant.type": "client_credentials",
+    "sf.instance.url": "https://YOUR_DOMAIN.my.salesforce.com",
+    "sf.consumer.key": "${file:/secrets/sf.properties:consumer.key}",
+    "sf.consumer.secret": "${file:/secrets/sf.properties:consumer.secret}",
+    "sf.platform.event.name": "Order_Shipped__e",
+    "sf.publish.mode": "pubsub",
+    "behavior.on.api.errors": "fail",
+    "errors.tolerance": "all",
+    "errors.deadletterqueue.topic.name": "dlq-salesforce-pe-sink"
+  }
+}

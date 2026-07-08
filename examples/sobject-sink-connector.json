@@ -1,0 +1,21 @@
+{
+  "name": "salesforce-sobject-sink",
+  "config": {
+    "connector.class": "sh.oso.salesforce.sink.SalesforceSinkConnector",
+    "tasks.max": "2",
+    "topics": "salesforce.Lead",
+    "sf.auth.grant.type": "client_credentials",
+    "sf.instance.url": "https://TARGET_ORG.my.salesforce.com",
+    "sf.consumer.key": "${file:/secrets/sf.properties:consumer.key}",
+    "sf.consumer.secret": "${file:/secrets/sf.properties:consumer.secret}",
+    "sf.objects": "Lead",
+    "sf.Lead.topics": "salesforce.Lead",
+    "sf.Lead.use.custom.id.field": "true",
+    "sf.Lead.custom.id.field.name": "External_Id__c",
+    "sf.write.mode": "auto",
+    "behavior.on.api.errors": "fail",
+    "errors.tolerance": "all",
+    "errors.deadletterqueue.topic.name": "dlq-salesforce-sink",
+    "errors.deadletterqueue.topic.replication.factor": "1"
+  }
+}
