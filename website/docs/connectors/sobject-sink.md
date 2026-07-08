@@ -65,6 +65,11 @@ the failure reason. `behavior.on.api.errors` then controls the task:
 
 ## Configuration reference
 
+:::tip Full property reference
+Every property with types, defaults, and valid values — generated from the connector's ConfigDef:
+[SObject Sink Configuration](../reference/configuration/sobject-sink.md).
+:::
+
 Auth properties (`sf.auth.grant.type`, `sf.instance.url`, `sf.consumer.key`, …) are the
 same as the [source connector](source.md#connection--auth).
 

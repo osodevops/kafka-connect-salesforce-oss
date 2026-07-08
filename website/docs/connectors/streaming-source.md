@@ -39,6 +39,10 @@ e.g. `kafka.topic=sf.${_ObjectType}`.
 
 ## Configuration reference
 
+:::tip Full property reference
+[Streaming Source Configuration](../reference/configuration/streaming-source.md) — generated from the connector's ConfigDef.
+:::
+
 Auth properties are shared with the other connectors — see the
 [source connector](source.md#connection--auth).
 

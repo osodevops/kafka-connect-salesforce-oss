@@ -66,6 +66,55 @@ docker compose exec kafka /opt/kafka/bin/kafka-console-consumer.sh \
 
 Full walkthrough (Connected App setup, OAuth flows, connector configs): **[the documentation](https://salesforcekafkaconnector.com/)**.
 
+## Example configuration
+
+Stream CDC for three SObjects (with a historical Bulk 2.0 backfill first) into per-object topics:
+
+```json
+{
+  "name": "salesforce-source",
+  "config": {
+    "connector.class": "sh.oso.salesforce.source.SalesforceSourceConnector",
+    "tasks.max": "3",
+    "sf.auth.grant.type": "client_credentials",
+    "sf.instance.url": "https://acme.my.salesforce.com",
+    "sf.consumer.key": "${file:/secrets/sf.properties:consumer.key}",
+    "sf.consumer.secret": "${file:/secrets/sf.properties:consumer.secret}",
+    "sf.sobjects": "Account,Contact,Opportunity",
+    "sf.topic.prefix": "salesforce",
+    "sf.snapshot.enabled": "true",
+    "sf.realtime.mode": "event_driven",
+    "sf.emit.tombstone.on.delete": "true",
+    "sf.gap.recovery": "resync"
+  }
+}
+```
+
+Write records back into Salesforce with idempotent external-ID upserts:
+
+```json
+{
+  "name": "salesforce-lead-sink",
+  "config": {
+    "connector.class": "sh.oso.salesforce.sink.SalesforceSinkConnector",
+    "tasks.max": "2",
+    "topics": "salesforce.Lead",
+    "sf.auth.grant.type": "client_credentials",
+    "sf.instance.url": "https://target-org.my.salesforce.com",
+    "sf.consumer.key": "${file:/secrets/sf.properties:consumer.key}",
+    "sf.consumer.secret": "${file:/secrets/sf.properties:consumer.secret}",
+    "sf.objects": "Lead",
+    "sf.Lead.topics": "salesforce.Lead",
+    "sf.Lead.use.custom.id.field": "true",
+    "sf.Lead.custom.id.field.name": "External_Id__c",
+    "errors.tolerance": "all",
+    "errors.deadletterqueue.topic.name": "dlq-salesforce-lead-sink"
+  }
+}
+```
+
+Every property is documented in the **[configuration reference](https://salesforcekafkaconnector.com/reference/configuration/source)** — generated from the connectors' `ConfigDef`, so it always matches the release.
+
 ## The connectors
 
 | Connector | Direction | Salesforce APIs |

@@ -31,6 +31,36 @@
     </dependency>
     <dependency>
       <groupId>sh.oso</groupId>
+      <artifactId>connect-salesforce-source</artifactId>
+      <version>${project.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>sh.oso</groupId>
+      <artifactId>connect-salesforce-sink</artifactId>
+      <version>${project.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>sh.oso</groupId>
+      <artifactId>connect-salesforce-pe-sink</artifactId>
+      <version>${project.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>sh.oso</groupId>
+      <artifactId>connect-salesforce-streaming-source</artifactId>
+      <version>${project.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.kafka</groupId>
+      <artifactId>connect-api</artifactId>
+      <version>${kafka.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>sh.oso</groupId>
       <artifactId>sf-core</artifactId>
       <version>${project.version}</version>
       <type>test-jar</type>

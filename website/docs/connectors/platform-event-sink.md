@@ -37,6 +37,10 @@ duplicates are possible on retry.
 
 ## Configuration reference
 
+:::tip Full property reference
+[Platform Event Sink Configuration](../reference/configuration/platform-event-sink.md) — generated from the connector's ConfigDef.
+:::
+
 Auth properties are shared with the other connectors — see the
 [source connector](source.md#connection--auth).
 

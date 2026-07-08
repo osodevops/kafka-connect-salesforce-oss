@@ -57,6 +57,16 @@ const sidebars = {
       type: 'category',
       label: 'Reference',
       items: [
+        {
+          type: 'category',
+          label: 'Configuration',
+          items: [
+            'reference/configuration/source',
+            'reference/configuration/sobject-sink',
+            'reference/configuration/platform-event-sink',
+            'reference/configuration/streaming-source',
+          ],
+        },
         'reference/authentication',
         'reference/error-handling',
         'reference/schemas',

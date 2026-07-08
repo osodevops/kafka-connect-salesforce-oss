@@ -60,6 +60,11 @@ transaction) and expired replayIds apply the `sf.gap.recovery` strategy:
 
 ## Configuration reference
 
+:::tip Full property reference
+Every property with types, defaults, and valid values — generated from the connector's ConfigDef:
+[Source Connector Configuration](../reference/configuration/source.md).
+:::
+
 ### Connection & auth
 
 | Property | Type | Default | Description |
