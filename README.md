@@ -107,8 +107,29 @@ mvn clean verify -DskipE2E    # without Docker
 
 Docs are built with Docusaurus from [`website/`](website/) and served at **[osodevops.github.io/kafka-connect-salesforce-oss](https://osodevops.github.io/kafka-connect-salesforce-oss/)** (moving to salesforcekafkaconnector.com). Design/clean-room documents live in [`docs/`](docs/).
 
+## Contributing
+
+We welcome contributions of all kinds!
+
+- **Report Bugs:** Found a bug? Open an [issue on GitHub](https://github.com/osodevops/kafka-connect-salesforce-oss/issues).
+- **Suggest Features:** Have an idea? [Open a feature request](https://github.com/osodevops/kafka-connect-salesforce-oss/issues/new).
+- **Contribute Code:** Check out our [good first issues](https://github.com/osodevops/kafka-connect-salesforce-oss/labels/good%20first%20issue) for beginner-friendly tasks — the [local testing guide](https://osodevops.github.io/kafka-connect-salesforce-oss/development/local-testing) gets you a full fake-Salesforce dev loop with no Salesforce org.
+- **Improve Docs:** The site lives in [`website/`](website/) — docs pull requests are very welcome.
+
+Releases use [conventional commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, …) — release-please turns them into versions and changelogs automatically.
+
+## Commercial Support
+
+[OSO](https://oso.sh) are Apache Kafka specialists. If you need help running Salesforce↔Kafka pipelines in production — architecture reviews, migration from Confluent, 24/7 support — [talk to us](https://oso.sh/contact/).
+
 ## License
 
-Apache License 2.0 — see [LICENSE](LICENSE).
+kafka-connect-salesforce is licensed under the [Apache License 2.0](LICENSE) © [OSO](https://oso.sh).
 
 This is an independent open-source project, not affiliated with, endorsed, or sponsored by Salesforce, Inc. or the Apache Software Foundation. Salesforce is a trademark of Salesforce, Inc. Apache, Apache Kafka, and Kafka are trademarks of the Apache Software Foundation.
+
+---
+
+<p align="center">
+  Made with ❤️ by <a href="https://oso.sh">OSO</a>
+</p>
