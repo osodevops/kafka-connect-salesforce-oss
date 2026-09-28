@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.1](https://github.com/osodevops/kafka-connect-salesforce-oss/compare/v0.1.0...v0.1.1) (2026-09-28)
+
+
+### Documentation
+
+* Enterprise Support page and navigation ([#26](https://github.com/osodevops/kafka-connect-salesforce-oss/issues/26)) ([74f877d](https://github.com/osodevops/kafka-connect-salesforce-oss/commit/74f877d47e57164e2d1085cb7a76bddca609768b))
+* generated per-property configuration reference + README config examples ([7fb4075](https://github.com/osodevops/kafka-connect-salesforce-oss/commit/7fb4075cf5ce4fac736d2e2abf91ec48b388c605))
+* publish the support policy and align the security policy ([#25](https://github.com/osodevops/kafka-connect-salesforce-oss/issues/25)) ([888eadc](https://github.com/osodevops/kafka-connect-salesforce-oss/commit/888eadcb659369b0949c7cb62c38fd0dd5c63bcf))
+
 ## [0.1.0](https://github.com/osodevops/kafka-connect-salesforce-oss/compare/v0.0.1...v0.1.0) (2026-07-08)
 
 
