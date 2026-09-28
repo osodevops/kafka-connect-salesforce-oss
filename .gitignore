@@ -9,3 +9,6 @@ target/
 dependency-reduced-pom.xml
 *.log
 .flattened-pom.xml
+
+# Local sales material (proposals, client correspondence) — never commit
+sales/
