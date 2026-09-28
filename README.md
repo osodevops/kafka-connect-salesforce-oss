@@ -169,7 +169,7 @@ Releases use [conventional commits](https://www.conventionalcommits.org/) (`feat
 
 ## Commercial Support
 
-[OSO](https://oso.sh) are Apache Kafka specialists. If you need help running Salesforce↔Kafka pipelines in production — architecture reviews, migration from Confluent, 24/7 support — [talk to us](https://oso.sh/contact/).
+[OSO](https://oso.sh), who build and maintain these connectors, offer an annual **Enterprise support subscription**: maintained releases and security patches, Salesforce seasonal release readiness, production support with a 60-minute P1 response in UK business hours, an onboarding review, and help migrating from Confluent's connectors. What is covered, the response targets, the supported-version window and the maintenance commitments are published in [SUPPORT.md](SUPPORT.md). Contact [sales@oso.sh](mailto:sales@oso.sh) or [book a call](https://meetings-eu1.hubspot.com/sion-smith).
 
 ## License
 
