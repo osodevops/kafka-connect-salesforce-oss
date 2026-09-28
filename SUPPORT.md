@@ -2,7 +2,8 @@
 
 kafka-connect-salesforce is open source (Apache-2.0). Commercial support for the
 four connectors is available from OSO as an annual **Enterprise support
-subscription**. The figures below are the standard terms; a support schedule
+subscription** (overview: https://salesforcekafkaconnector.com/enterprise-support).
+The figures below are the standard terms; a support schedule
 agreed with a subscriber may extend them (longer hours, on-call cover, service
 credits) but never reduces them.
 
