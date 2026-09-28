@@ -21,6 +21,8 @@
 
 **kafka-connect-salesforce** is a production-grade, Apache-2.0 suite of Salesforce connectors for Kafka Connect — the **open-source alternative to Confluent's proprietary Salesforce connectors**. Four connectors deliver functional parity with Confluent's eleven, built clean-room on Salesforce's modern **Pub/Sub API (gRPC)** and **Bulk API 2.0**.
 
+> **Running it in production?** OSO, who build and maintain the connectors, offer an [Enterprise support subscription](https://salesforcekafkaconnector.com/enterprise-support): maintained releases and security patches, Salesforce seasonal release readiness, a 60-minute P1 response from the engineers who write the code, and an onboarding review. What it covers is on the [Enterprise Support page](https://salesforcekafkaconnector.com/enterprise-support) and in [SUPPORT.md](SUPPORT.md).
+
 ## Features
 
 - **Real-time CDC streaming** — Change Data Capture over the Pub/Sub API with replayId checkpointing and 72h replay
@@ -169,7 +171,7 @@ Releases use [conventional commits](https://www.conventionalcommits.org/) (`feat
 
 ## Commercial Support
 
-[OSO](https://oso.sh), who build and maintain these connectors, offer an annual **Enterprise support subscription**: maintained releases and security patches, Salesforce seasonal release readiness, production support with a 60-minute P1 response in UK business hours, an onboarding review, and help migrating from Confluent's connectors. What is covered, the response targets, the supported-version window and the maintenance commitments are published in [SUPPORT.md](SUPPORT.md). Contact [sales@oso.sh](mailto:sales@oso.sh) or [book a call](https://meetings-eu1.hubspot.com/sion-smith).
+[OSO](https://oso.sh), who build and maintain these connectors, offer an annual **Enterprise support subscription**: maintained releases and security patches, Salesforce seasonal release readiness, production support with a 60-minute P1 response in UK business hours, an onboarding review, and help migrating from Confluent's connectors. What is covered, the response targets, the supported-version window and the maintenance commitments are on the [Enterprise Support page](https://salesforcekafkaconnector.com/enterprise-support) and in [SUPPORT.md](SUPPORT.md). Contact [sales@oso.sh](mailto:sales@oso.sh) or [book a call](https://meetings-eu1.hubspot.com/sion-smith).
 
 ## License
 

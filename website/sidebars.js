@@ -82,6 +82,7 @@ const sidebars = {
       ],
     },
     'migration/confluent',
+    'enterprise-support',
     {
       type: 'html',
       value: `<a class="sidebar-version__link" href="https://github.com/osodevops/kafka-connect-salesforce-oss/releases/tag/${connectorVersion}" target="_blank" rel="noopener noreferrer"><span class="sidebar-version__label">connector</span><span class="sidebar-version__badge">${connectorVersion}</span></a>`,

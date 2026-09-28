@@ -92,6 +92,11 @@ const config = {
             position: 'right',
           },
           {
+            to: '/enterprise-support',
+            label: 'Enterprise Support',
+            position: 'right',
+          },
+          {
             href: 'https://oso.sh/contact/',
             label: 'Contact',
             position: 'right',
@@ -108,6 +113,7 @@ const config = {
               {label: 'Source Connector', to: '/connectors/source'},
               {label: 'SObject Sink', to: '/connectors/sobject-sink'},
               {label: 'Migrating from Confluent', to: '/migration/confluent'},
+              {label: 'Enterprise Support', to: '/enterprise-support'},
             ],
           },
           {
@@ -122,6 +128,7 @@ const config = {
             title: 'OSO',
             items: [
               {label: 'oso.sh', href: 'https://www.oso.sh'},
+              {label: 'Enterprise Support', to: '/enterprise-support'},
               {label: 'Kafka Backup', href: 'https://kafkabackup.com'},
               {label: 'Contact', href: 'https://oso.sh/contact/'},
             ],

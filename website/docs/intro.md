@@ -50,5 +50,6 @@ maintained open-source connector uses it. The Pub/Sub API gives you:
 - **New here?** Start with [Getting Started](getting-started/index.md).
 - **Configuring a connector?** Jump to the per-connector reference under *Connectors*.
 - **Coming from Confluent?** See [Migrating from Confluent](migration/confluent.md).
+- **Running it in production?** OSO, who build the connectors, offer an [Enterprise support subscription](enterprise-support.md): maintained releases, Salesforce release readiness, a 60-minute P1 response in business hours, and an onboarding review.
 - **Contributing?** See [Building](development/building.md) and
   [Local testing](development/local-testing.md).
