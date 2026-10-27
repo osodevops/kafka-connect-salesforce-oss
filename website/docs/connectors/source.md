@@ -15,6 +15,7 @@ Streams Salesforce data into Kafka with three ingestion modes per SObject:
 | **Historical snapshot** | Bulk API 2.0 query | Optional one-time initial load before the real-time mode starts |
 | **Event-driven sync** (default) | Pub/Sub API `Subscribe` on CDC channels | Real-time create/update/delete/undelete with replayId checkpointing |
 | **Periodic polling** | Bulk API 2.0 query | `SystemModstamp`-cursor polling for orgs/objects without CDC |
+| **[Platform Events](#platform-events)** | Pub/Sub API `Subscribe` on `/event/<Name>__e` | Every field of each event as published, with replayId checkpointing (`sf.platform.events`) |
 
 Each SObject in `sf.sobjects` gets its own Kafka topic (`{sf.topic.prefix}.{SObject}`),
 its own offset state, schema cache, and Pub/Sub subscription — a failure on one object
