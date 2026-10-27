@@ -62,7 +62,10 @@ transaction) and expired replayIds apply the `sf.gap.recovery` strategy:
 
 ## Platform Events
 
-:::info Available from version 0.2.1
+:::info Available from version 0.2.1; use 0.2.2 or later
+0.2.2 renders `ReplayId` as Salesforce's numeric replay position (0.2.1 showed base64 on
+real orgs) and lets a CDC snapshot start on a quiet org. Both were found by testing against a
+live org; see the [walkthrough](../getting-started/platform-events-walkthrough.md).
 :::
 
 List custom platform events (API names ending in `__e`) in `sf.platform.events` to stream
