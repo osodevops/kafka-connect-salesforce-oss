@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.2.0](https://github.com/osodevops/kafka-connect-salesforce-oss/compare/v0.1.0...v0.2.0) (2026-10-27)
+
+
+### Features
+
+* **migration:** translate Confluent Platform Event source configs and Confluent Cloud class names ([#31](https://github.com/osodevops/kafka-connect-salesforce-oss/issues/31)) ([aea984b](https://github.com/osodevops/kafka-connect-salesforce-oss/commit/aea984b49303f180ba056194c8f838dabf405561))
+* **source:** consume Platform Events over the Pub/Sub API ([#30](https://github.com/osodevops/kafka-connect-salesforce-oss/issues/30)) ([82555c5](https://github.com/osodevops/kafka-connect-salesforce-oss/commit/82555c5eb71b7ba1ebfa788a93abf419af849ba0))
+
+
+### Bug Fixes
+
+* **source:** recover from Pub/Sub stream errors instead of failing the task ([#29](https://github.com/osodevops/kafka-connect-salesforce-oss/issues/29)) ([1534a07](https://github.com/osodevops/kafka-connect-salesforce-oss/commit/1534a079896d690d4e4ea9e32d6ce3009ce0d26d))
+
+
+### Documentation
+
+* Enterprise Support page and navigation ([#26](https://github.com/osodevops/kafka-connect-salesforce-oss/issues/26)) ([74f877d](https://github.com/osodevops/kafka-connect-salesforce-oss/commit/74f877d47e57164e2d1085cb7a76bddca609768b))
+* generated per-property configuration reference + README config examples ([7fb4075](https://github.com/osodevops/kafka-connect-salesforce-oss/commit/7fb4075cf5ce4fac736d2e2abf91ec48b388c605))
+* publish the support policy and align the security policy ([#25](https://github.com/osodevops/kafka-connect-salesforce-oss/issues/25)) ([888eadc](https://github.com/osodevops/kafka-connect-salesforce-oss/commit/888eadcb659369b0949c7cb62c38fd0dd5c63bcf))
+
 ## [0.1.0](https://github.com/osodevops/kafka-connect-salesforce-oss/compare/v0.0.1...v0.1.0) (2026-07-08)
 
 
