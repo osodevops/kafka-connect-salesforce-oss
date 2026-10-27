@@ -1,11 +1,16 @@
 package sh.oso.salesforce.pubsub;
 
 import java.math.BigInteger;
+import java.util.Arrays;
 import java.util.Base64;
 
 /**
  * Representations of Pub/Sub replay IDs. A replay ID is opaque bytes and must be stored and
  * sent back verbatim; the decimal form is for display only.
+ *
+ * <p>Salesforce's replay IDs start with the event's 8-byte big-endian position, followed by
+ * bytes identifying the event bus partition (for example {@code ...core1.sfdc-...}). The
+ * position is the numeric ReplayId the Streaming API reports for the same event.</p>
  */
 public final class ReplayIds {
 
@@ -21,13 +26,14 @@ public final class ReplayIds {
     }
 
     /**
-     * The replay ID as an unsigned big-endian decimal (the numeric form Salesforce shows, such
-     * as {@code 4093842}), or base64 when it is not 1 to 8 bytes long.
+     * The numeric ReplayId Salesforce reports for the event (such as {@code 4093842}): the first
+     * 8 bytes as an unsigned big-endian number. Shorter values are read whole; an empty value
+     * renders as an empty string.
      */
     public static String toDisplayString(byte[] replayId) {
-        if (replayId.length >= 1 && replayId.length <= 8) {
-            return new BigInteger(1, replayId).toString();
+        if (replayId.length == 0) {
+            return "";
         }
-        return toBase64(replayId);
+        return new BigInteger(1, Arrays.copyOf(replayId, Math.min(replayId.length, 8))).toString();
     }
 }

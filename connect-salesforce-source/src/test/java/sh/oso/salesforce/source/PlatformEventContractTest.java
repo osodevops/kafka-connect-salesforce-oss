@@ -15,7 +15,7 @@ import sh.oso.salesforce.testing.MockSalesforceServer;
 import sh.oso.salesforce.testing.TestSchemas;
 
 import java.io.InputStream;
-import java.math.BigInteger;
+import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
@@ -107,7 +107,7 @@ class PlatformEventContractTest {
         pass &= check(checks, "Payload__c delivered intact", Integer.toString(payload.length()),
                 Integer.toString(rendered.path("Payload__c").asText().length()));
         pass &= check(checks, "ReplayId is the decimal replay position",
-                new BigInteger(1, replayId).toString(), rendered.path("ReplayId").asText());
+                Long.toUnsignedString(ByteBuffer.wrap(replayId).getLong()), rendered.path("ReplayId").asText());
         pass &= check(checks, "EventUuid is the event's UUID",
                 pubsub.eventId(CHANNEL, replayId), rendered.path("EventUuid").asText());
         pass &= check(checks, "_ObjectType is the event API name", EVENT, rendered.path("_ObjectType").asText());
