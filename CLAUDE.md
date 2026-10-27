@@ -23,7 +23,7 @@ mvn clean verify -DskipE2E    # without Docker
 mvn clean package -DskipTests # plugin ZIPs land in */target/*-kafka-connect-plugin.zip
 ```
 
-No Salesforce org is needed: `sf-core`'s test-jar ships a fake Salesforce (WireMock HTTP surface with the Bulk 2.0 job lifecycle, an in-process gRPC Pub/Sub API with replay semantics, and a CometD stub). CI runs on Java 17 and 21 and publishes a `migration-evidence` artefact from the Confluent cutover test on every build.
+No Salesforce org is needed: `sf-core`'s test-jar ships a fake Salesforce (WireMock HTTP surface with the Bulk 2.0 job lifecycle, and an in-process gRPC Pub/Sub API with replay semantics and fault injection); the CometD stub (`BayeuxStubServer`) lives in the streaming source module's tests. CI runs on Java 17 and 21 and publishes a `migration-evidence` artefact from the Confluent cutover test on every build.
 
 ## Releasing
 

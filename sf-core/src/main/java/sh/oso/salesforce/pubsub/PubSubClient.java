@@ -93,18 +93,20 @@ public final class PubSubClient implements AutoCloseable {
 
     /**
      * Opens a Subscribe stream. The subscription manages pull-based flow control and decodes
-     * Avro payloads via this client's schema cache.
+     * Avro payloads via this client's schema cache. The stream authenticates with the session
+     * current at the time of the call, exposed as {@link PubSubSubscription#session()}.
+     *
+     * @throws SalesforceException when no session can be obtained
      */
     public PubSubSubscription subscribe(SubscribeOptions options) {
-        return new PubSubSubscription(asyncStub(), this::getSchema, options);
+        Session session = sessions.session();
+        PubSubGrpc.PubSubStub stub = PubSubGrpc.newStub(channel)
+                .withCallCredentials(fixedCredentials(session));
+        return new PubSubSubscription(stub, this::getSchema, options, session);
     }
 
     PubSubGrpc.PubSubBlockingStub blockingStub() {
         return PubSubGrpc.newBlockingStub(channel).withCallCredentials(sessionCredentials());
-    }
-
-    PubSubGrpc.PubSubStub asyncStub() {
-        return PubSubGrpc.newStub(channel).withCallCredentials(sessionCredentials());
     }
 
     private CallCredentials sessionCredentials() {
@@ -113,14 +115,7 @@ public final class PubSubClient implements AutoCloseable {
             public void applyRequestMetadata(RequestInfo requestInfo, Executor executor, MetadataApplier applier) {
                 executor.execute(() -> {
                     try {
-                        Session session = sessions.session();
-                        Metadata metadata = new Metadata();
-                        metadata.put(ACCESS_TOKEN, session.accessToken());
-                        metadata.put(INSTANCE_URL, session.instanceUrl());
-                        if (session.orgId() != null) {
-                            metadata.put(TENANT_ID, session.orgId());
-                        }
-                        applier.apply(metadata);
+                        applier.apply(authMetadata(sessions.session()));
                     } catch (SalesforceException e) {
                         applier.fail(Status.UNAUTHENTICATED.withDescription(e.getMessage()).withCause(e));
                     }
@@ -129,9 +124,36 @@ public final class PubSubClient implements AutoCloseable {
         };
     }
 
+    private static CallCredentials fixedCredentials(Session session) {
+        return new CallCredentials() {
+            @Override
+            public void applyRequestMetadata(RequestInfo requestInfo, Executor executor, MetadataApplier applier) {
+                applier.apply(authMetadata(session));
+            }
+        };
+    }
+
+    private static Metadata authMetadata(Session session) {
+        Metadata metadata = new Metadata();
+        metadata.put(ACCESS_TOKEN, session.accessToken());
+        metadata.put(INSTANCE_URL, session.instanceUrl());
+        if (session.orgId() != null) {
+            metadata.put(TENANT_ID, session.orgId());
+        }
+        return metadata;
+    }
+
     /** Signals the session may be stale (e.g. UNAUTHENTICATED from a stream). */
     public void invalidateSession() {
         sessions.invalidate(sessions.session());
+    }
+
+    /**
+     * Drops {@code failed} if it is still the cached session, so streams that saw the same
+     * rejected token re-authenticate once rather than discarding a freshly minted session.
+     */
+    public void invalidateSession(Session failed) {
+        sessions.invalidate(failed);
     }
 
     @Override

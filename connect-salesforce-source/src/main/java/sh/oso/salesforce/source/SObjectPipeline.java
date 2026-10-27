@@ -8,12 +8,11 @@ import org.apache.kafka.connect.source.SourceRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import sh.oso.salesforce.bulk.BulkQueryClient;
-import sh.oso.salesforce.common.SalesforceException;
 import sh.oso.salesforce.limits.RateGovernor;
 import sh.oso.salesforce.pubsub.ChangeEventUtils;
 import sh.oso.salesforce.pubsub.DecodedEvent;
 import sh.oso.salesforce.pubsub.PubSubClient;
-import sh.oso.salesforce.pubsub.PubSubSubscription;
+import sh.oso.salesforce.pubsub.PubSubStreamException;
 import sh.oso.salesforce.pubsub.SubscribeOptions;
 import sh.oso.salesforce.rest.RestClient;
 import sh.oso.salesforce.schema.DescribeToConnect;
@@ -40,12 +39,14 @@ final class SObjectPipeline implements AutoCloseable {
     private final String cdcTopicName;
     private final RestClient rest;
     private final BulkQueryClient bulkQuery;
-    private final PubSubClient pubsub;
     private final RateGovernor governor;
     private final SourceRecordFactory records;
     private final SObjectOffset offset;
+    private final ResilientSubscription stream; // null in polling mode
 
-    private PubSubSubscription subscription;
+    private boolean recoveryPending;       // replay position lost; apply sf.gap.recovery
+    private PubSubStreamException lostReplay;
+    private boolean forceLatest;           // sf.gap.recovery=latest: resume from newest once
     private String snapshotJobId;
     private String snapshotLocator;
     private boolean snapshotJobExhausted;
@@ -62,8 +63,11 @@ final class SObjectPipeline implements AutoCloseable {
         this.cdcTopicName = "/data/" + sobject + "ChangeEvent";
         this.rest = rest;
         this.bulkQuery = bulkQuery;
-        this.pubsub = pubsub;
         this.governor = governor;
+        this.stream = pubsub == null ? null : new ResilientSubscription(pubsub, cdcTopicName,
+                "CDC stream for " + sobject,
+                "Enable Change Data Capture for " + sobject + " (Setup > Change Data Capture)",
+                config.getInt(SourceConfig.PUBSUB_BATCH_SIZE));
         this.records = new SourceRecordFactory(sobject, config.topicFor(sobject));
         this.offset = SObjectOffset.fromMap(storedOffset);
         if (offset.mode() == SObjectOffset.Mode.SNAPSHOT
@@ -120,13 +124,11 @@ final class SObjectPipeline implements AutoCloseable {
         if (realtimeMode() == SObjectOffset.Mode.EVENT_DRIVEN && offset.probeReplayId() == null) {
             // Probe the CDC stream's current position before snapshotting; the handoff
             // subscription replays from here so nothing between probe and completion is lost.
-            try (PubSubSubscription probe = pubsub.subscribe(
-                    SubscribeOptions.latest(cdcTopicName, config.getInt(SourceConfig.PUBSUB_BATCH_SIZE)))) {
-                if (!probe.awaitEstablished(30_000)) {
-                    throw new SalesforceException("Timed out establishing CDC probe for " + sobject, null, true);
-                }
-                offset.setProbeReplayId(probe.latestReplayId());
+            byte[] probe = stream.probeLatestReplayId();
+            if (probe == null) {
+                return; // transient failure; retried on a later poll
             }
+            offset.setProbeReplayId(probe);
             LOG.info("Recorded CDC probe replayId for {} before snapshot", sobject);
         }
         governor.acquire(RateGovernor.DAILY_BULK_V2_QUERY_JOBS);
@@ -150,19 +152,22 @@ final class SObjectPipeline implements AutoCloseable {
     // ---------------------------------------------------------------- event-driven
 
     private List<SourceRecord> eventStep() throws InterruptedException {
-        ensureSubscription();
+        if (recoveryPending) {
+            return recoverLostReplay();
+        }
         List<DecodedEvent> events;
         try {
-            events = subscription.poll(config.getInt(SourceConfig.PUBSUB_BATCH_SIZE), 100);
-        } catch (SalesforceException e) {
-            return handleStreamFailure(e);
+            events = stream.poll(this::resumeOptions);
+        } catch (PubSubStreamException e) {
+            LOG.warn("CDC stream for {} lost its replay position ({}); applying sf.gap.recovery={}",
+                    sobject, e.getMessage(), config.gapRecovery());
+            lostReplay = e;
+            recoveryPending = true;
+            return recoverLostReplay();
         }
         List<SourceRecord> out = new ArrayList<>();
         for (DecodedEvent event : events) {
             processEvent(event, out);
-        }
-        if (subscription != null && subscription.isBroken()) {
-            closeSubscription();
         }
         return out;
     }
@@ -310,53 +315,53 @@ final class SObjectPipeline implements AutoCloseable {
         } while (locator != null);
     }
 
-    private void ensureSubscription() throws InterruptedException {
-        if (subscription != null && !subscription.isBroken()) {
-            return;
-        }
-        closeSubscription();
+    /** Where a new subscription starts: the stored position, else the configured start point. */
+    private SubscribeOptions resumeOptions() {
         int batchSize = config.getInt(SourceConfig.PUBSUB_BATCH_SIZE);
-        SubscribeOptions options;
         if (offset.replayId() != null) {
-            options = SubscribeOptions.custom(cdcTopicName, offset.replayId(), batchSize);
-        } else if (offset.probeReplayId() != null) {
-            options = SubscribeOptions.custom(cdcTopicName, offset.probeReplayId(), batchSize);
-        } else if (config.eventStart() == SourceConfig.EventStart.ALL) {
-            options = SubscribeOptions.earliest(cdcTopicName, batchSize);
-        } else {
-            options = SubscribeOptions.latest(cdcTopicName, batchSize);
+            return SubscribeOptions.custom(cdcTopicName, offset.replayId(), batchSize);
         }
-        subscription = pubsub.subscribe(options);
-        LOG.info("Subscribed to {} ({})", cdcTopicName, options.replayPreset());
+        if (offset.probeReplayId() != null) {
+            return SubscribeOptions.custom(cdcTopicName, offset.probeReplayId(), batchSize);
+        }
+        if (!forceLatest && config.eventStart() == SourceConfig.EventStart.ALL) {
+            return SubscribeOptions.earliest(cdcTopicName, batchSize);
+        }
+        return SubscribeOptions.latest(cdcTopicName, batchSize);
     }
 
-    private List<SourceRecord> handleStreamFailure(SalesforceException failure) throws InterruptedException {
-        closeSubscription();
-        String message = failure.getMessage() == null ? "" : failure.getMessage();
-        boolean replayInvalid = message.contains("replayid")
-                || message.contains("replay id") || message.contains("REPLAY_ID");
-        if (replayInvalid || !failure.isRetryable()) {
-            LOG.warn("CDC stream for {} lost its replay position ({}); applying {} recovery",
-                    sobject, message, config.gapRecovery());
+    /**
+     * Applies {@code sf.gap.recovery} after the stored replay position was rejected (typically
+     * a task stopped for longer than the 72-hour retention window).
+     */
+    private List<SourceRecord> recoverLostReplay() throws InterruptedException {
+        SourceConfig.GapRecovery strategy = config.gapRecovery();
+        if (strategy == SourceConfig.GapRecovery.FAIL) {
+            // Keep the stored offset: a restarted task fails the same way until an operator acts.
+            throw new FatalPipelineException("CDC replay position lost for " + sobject
+                    + " and sf.gap.recovery=fail", lostReplay);
+        }
+        stream.reset();
+        if (strategy == SourceConfig.GapRecovery.LATEST) {
             offset.setReplayId(null);
             offset.setProbeReplayId(null);
-            List<SourceRecord> out = new ArrayList<>();
-            switch (config.gapRecovery()) {
-                case RESYNC -> resync(out);
-                case LATEST -> LOG.warn("Resubscribing {} from LATEST; events during downtime lost", sobject);
-                case FAIL -> throw new ConnectException("CDC replay position lost for " + sobject, failure);
-            }
-            return out;
+            forceLatest = true;
+            recoveryPending = false;
+            LOG.warn("Resubscribing {} from LATEST; events during downtime lost", sobject);
+            return List.of();
         }
-        LOG.warn("Transient CDC stream failure for {}: {}; will resubscribe", sobject, message);
-        return List.of();
-    }
-
-    private void closeSubscription() {
-        if (subscription != null) {
-            subscription.close();
-            subscription = null;
+        // RESYNC: record the stream's current position first, then re-read everything changed
+        // since the watermark; resuming from the probe leaves no gap between the two.
+        byte[] probe = stream.probeLatestReplayId();
+        if (probe == null) {
+            return List.of(); // transient failure; retried on a later poll
         }
+        offset.setReplayId(null);
+        offset.setProbeReplayId(probe);
+        List<SourceRecord> out = new ArrayList<>();
+        resync(out);
+        recoveryPending = false;
+        return out;
     }
 
     // ---------------------------------------------------------------- polling
@@ -433,6 +438,8 @@ final class SObjectPipeline implements AutoCloseable {
 
     @Override
     public void close() {
-        closeSubscription();
+        if (stream != null) {
+            stream.close();
+        }
     }
 }

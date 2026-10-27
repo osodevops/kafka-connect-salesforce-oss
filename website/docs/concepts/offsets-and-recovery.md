@@ -38,7 +38,10 @@ The legacy CometD source stores `{"replayId": <long>}` per channel.
 |---|---|
 | Worker restart / rebalance | Resume from stored offsets; no action needed |
 | Downtime < 72h (event-driven) | Replay from `replayId` — no loss, possible duplicates |
-| Downtime > 72h / expired replayId | `sf.gap.recovery`: `resync` (incremental Bulk re-sync from the watermark − buffer), `latest` (accept loss), or `fail` |
+| Downtime > 72h / expired replayId | `sf.gap.recovery`: `resync` (record the stream's current position, then an incremental Bulk re-sync from the watermark − buffer, then resume from that position), `latest` (resume from the newest event; events during the downtime are lost), or `fail` (the task fails and the stored offset is kept, so a restart fails the same way until an operator acts) |
+| Transient stream failure (`UNAVAILABLE`, stream reset, stream closed by Salesforce) | The pipeline resubscribes from its last position with exponential backoff (500 ms doubling to 60 s, with jitter); other pipelines in the task keep running |
+| Session expired (`UNAUTHENTICATED`) | The rejected session is dropped, the connector re-authenticates and resubscribes; three rejections in a row fail the task |
+| Missing channel or permission (`NOT_FOUND`, `PERMISSION_DENIED`), undecodable event | The task fails with the topic, status and a hint (for example "Enable Change Data Capture for Contact"); records already produced by other pipelines in the same poll are delivered first |
 | CDC gap event (`GAP_*`) | Affected record Ids re-queried via REST and re-emitted |
 | CDC overflow (`GAP_OVERFLOW`) | Per `sf.gap.recovery` (overflow doesn't identify records) |
 | Restart mid-snapshot | Snapshot restarts from the beginning (at-least-once); the original probe replayId is retained so the handoff still misses nothing |

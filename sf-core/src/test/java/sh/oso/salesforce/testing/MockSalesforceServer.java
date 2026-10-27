@@ -16,6 +16,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
+import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlMatching;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathMatching;
@@ -116,6 +117,20 @@ public final class MockSalesforceServer implements AutoCloseable {
     /** Stubs a follow-up page fetched via nextRecordsUrl. */
     public void stubQueryPage(String pagePath, String responseJson) {
         server.stubFor(get(urlPathEqualTo(pagePath)).willReturn(okJson(responseJson)));
+    }
+
+    /**
+     * Makes the token endpoint issue a new access token from now on (each stub otherwise returns
+     * the same token), for tests that revoke a session. Returns the new token.
+     */
+    public String rotateToken() {
+        stubTokenEndpoint();
+        return "MOCK_TOKEN_" + tokenCounter.get();
+    }
+
+    /** OAuth token requests received so far. */
+    public int tokenRequests() {
+        return server.findAll(postRequestedFor(urlPathEqualTo("/services/oauth2/token"))).size();
     }
 
     public WireMockServer wireMock() {
