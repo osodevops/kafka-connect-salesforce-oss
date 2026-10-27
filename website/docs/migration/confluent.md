@@ -34,7 +34,7 @@ machine-readable evidence that the migration worked**.
 | Confluent connector | Replacement | Notes |
 |---|---|---|
 | Salesforce CDC Source | [Source](../connectors/source.md) (event-driven mode) | Pub/Sub transport instead of CometD |
-| Salesforce Platform Event Source | [Source](../connectors/source.md) (`sf.platform.events`, from 0.2.0) | Same record shape; the translator keeps your exact `kafka.topic` |
+| Salesforce Platform Event Source | [Source](../connectors/source.md) (`sf.platform.events`, from 0.2.1) | Same record shape; the translator keeps your exact `kafka.topic` |
 | Salesforce Bulk API 1.0 / 2.0 Source | [Source](../connectors/source.md) (snapshot/polling) | Bulk 2.0 only |
 | Salesforce Source V2 | [Source](../connectors/source.md) | Same architecture |
 | Salesforce PushTopic Source | [Streaming source](../connectors/streaming-source.md) | PushTopics only exist on CometD |

@@ -62,7 +62,7 @@ transaction) and expired replayIds apply the `sf.gap.recovery` strategy:
 
 ## Platform Events
 
-:::info Available from version 0.2.0
+:::info Available from version 0.2.1
 :::
 
 List custom platform events (API names ending in `__e`) in `sf.platform.events` to stream
