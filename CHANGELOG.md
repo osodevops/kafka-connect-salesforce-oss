@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.2](https://github.com/osodevops/kafka-connect-salesforce-oss/compare/v0.2.1...v0.2.2) (2026-10-27)
+
+
+### Bug Fixes
+
+* **source:** render ReplayId as Salesforce's numeric replay position ([#38](https://github.com/osodevops/kafka-connect-salesforce-oss/issues/38)) ([d26dac8](https://github.com/osodevops/kafka-connect-salesforce-oss/commit/d26dac8038f290b7998e02734af4a15623378338))
+* **source:** wait for Salesforce's keepalive before snapshotting instead of timing out ([#39](https://github.com/osodevops/kafka-connect-salesforce-oss/issues/39)) ([505c259](https://github.com/osodevops/kafka-connect-salesforce-oss/commit/505c2597fd7a94abe4328b34485ac198a3716e5c))
+
+
+### Documentation
+
+* Platform Events are available from 0.2.1 ([#36](https://github.com/osodevops/kafka-connect-salesforce-oss/issues/36)) ([86e33f2](https://github.com/osodevops/kafka-connect-salesforce-oss/commit/86e33f28abc1fdc0ac577f267e18d441097ba8d4))
+* Platform Events walkthrough with records from a real org ([#40](https://github.com/osodevops/kafka-connect-salesforce-oss/issues/40)) ([ed5181f](https://github.com/osodevops/kafka-connect-salesforce-oss/commit/ed5181f2a7371c0a7183242701f2ea14746c77dd))
+
 ## [0.2.1](https://github.com/osodevops/kafka-connect-salesforce-oss/compare/v0.2.0...v0.2.1) (2026-10-27)
 
 
