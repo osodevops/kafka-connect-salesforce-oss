@@ -7,6 +7,7 @@ import org.apache.kafka.common.config.ConfigDef.Type;
 import org.apache.kafka.common.config.ConfigException;
 import org.apache.kafka.common.config.types.Password;
 import sh.oso.salesforce.auth.AuthConfig;
+import sh.oso.salesforce.pubsub.PlatformEvents;
 
 import java.util.Locale;
 import java.util.Map;
@@ -40,9 +41,8 @@ public class PeSinkConfig extends AbstractConfig {
     public PeSinkConfig(Map<String, String> originals) {
         super(configDef(), originals);
         String eventName = getString(PLATFORM_EVENT_NAME);
-        if (!eventName.matches(".*__e$")) {
-            throw new ConfigException(PLATFORM_EVENT_NAME, eventName,
-                    "Platform event API names end with __e");
+        if (!PlatformEvents.isValidName(eventName)) {
+            throw new ConfigException(PLATFORM_EVENT_NAME, eventName, PlatformEvents.NAME_RULE);
         }
         authConfig();
     }
@@ -112,7 +112,7 @@ public class PeSinkConfig extends AbstractConfig {
     }
 
     public String eventTopic() {
-        return "/event/" + eventName();
+        return PlatformEvents.channel(eventName());
     }
 
     public String apiVersion() {

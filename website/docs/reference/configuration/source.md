@@ -16,7 +16,9 @@ Property-by-property reference, generated from the connector's `ConfigDef` — g
 
 Framework properties (`name`, `tasks.max`, converters, `errors.*`) follow the
 standard [Kafka Connect worker/connector configuration](https://kafka.apache.org/documentation/#connectconfigs).
-Topics are derived per SObject as `{sf.topic.prefix}.{SObject}` — there is no `topics` property on the source.
+Topics are derived per SObject as `{sf.topic.prefix}.{SObject}` and per platform event as
+`{sf.topic.prefix}.{EventName}` — there is no `topics` property on the source. At least one of
+`sf.sobjects` and `sf.platform.events` is required.
 
 ## High importance
 
@@ -55,15 +57,23 @@ Connected app consumer secret.
 
 ### `sf.sobjects`
 
-SObject API names to source (exact casing).
+SObject API names to source (exact casing). Required unless sf.platform.events is set.
 
 - **Type:** list
-- **Default:** none — **required**
+- **Default:** "" (empty)
+- **Importance:** high
+
+### `sf.platform.events`
+
+Platform event API names to stream over the Pub/Sub API (each ending in __e), one subscription per event. Each record carries every field of the event; records go to &#123;prefix&#125;.&#123;EventName&#125; with a null key.
+
+- **Type:** list
+- **Default:** "" (empty)
 - **Importance:** high
 
 ### `sf.topic.prefix`
 
-Kafka topics are &#123;prefix&#125;.&#123;SObject&#125;.
+Kafka topics are &#123;prefix&#125;.&#123;SObject&#125; and &#123;prefix&#125;.&#123;EventName&#125;.
 
 - **Type:** string
 - **Default:** none — **required**
@@ -130,7 +140,7 @@ Snapshot lower bound on CreatedDate (ISO-8601 date or datetime). Default: all re
 
 ### `sf.event.start`
 
-Cold-start replay position for event_driven mode.
+Cold-start replay position for CDC (event_driven mode) and platform event streams: latest (new events only) or all (everything Salesforce retains, 72 hours).
 
 - **Type:** string
 - **Default:** `latest`
@@ -139,7 +149,7 @@ Cold-start replay position for event_driven mode.
 
 ### `sf.gap.recovery`
 
-Behaviour on gap/overflow events or replay loss.
+Behaviour on CDC gap/overflow events or when a stored replay position has expired. For platform events, which cannot be re-queried, resync resubscribes from the earliest retained event.
 
 - **Type:** string
 - **Default:** `resync`
@@ -199,7 +209,7 @@ JWT aud claim; defaults to https://login.salesforce.com.
 
 ### `sf.sobjects.max`
 
-Maximum SObjects per connector instance.
+Maximum SObjects per connector instance (platform events are not counted).
 
 - **Type:** int
 - **Default:** `5`

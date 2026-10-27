@@ -17,14 +17,17 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-/** Runs one or more {@link SObjectPipeline}s with independent failure isolation. */
+/**
+ * Runs the task's {@link SObjectPipeline}s and {@link PlatformEventPipeline}s with independent
+ * failure isolation.
+ */
 public class SalesforceSourceTask extends SourceTask {
 
     private static final Logger LOG = LoggerFactory.getLogger(SalesforceSourceTask.class);
 
     private SourceConfig config;
     private PubSubClient pubsub;
-    private final List<SObjectPipeline> pipelines = new ArrayList<>();
+    private final List<SourcePipeline> pipelines = new ArrayList<>();
     private FatalPipelineException fatal;
 
     @Override
@@ -41,16 +44,25 @@ public class SalesforceSourceTask extends SourceTask {
         RestClient rest = new RestClient(http, config.apiVersion());
         BulkQueryClient bulkQuery = new BulkQueryClient(http, config.apiVersion());
         RateGovernor governor = RateGovernor.withDefaults(rest);
-        if (config.realtimeMode() == SourceConfig.RealtimeMode.EVENT_DRIVEN) {
+        List<String> events = config.taskPlatformEvents();
+        // Platform events always stream over Pub/Sub, whatever sf.realtime.mode says for SObjects.
+        if (config.realtimeMode() == SourceConfig.RealtimeMode.EVENT_DRIVEN || !events.isEmpty()) {
             pubsub = new PubSubClient(sessions, config.getString(SourceConfig.PUBSUB_ENDPOINT),
                     !config.getBoolean(SourceConfig.PUBSUB_PLAINTEXT));
         }
+        PubSubClient sobjectPubSub = config.realtimeMode() == SourceConfig.RealtimeMode.EVENT_DRIVEN ? pubsub : null;
         for (String sobject : config.taskSobjects()) {
             Map<String, Object> stored = context.offsetStorageReader()
                     .offset(SObjectOffset.partition(sobject));
-            pipelines.add(new SObjectPipeline(config, sobject, rest, bulkQuery, pubsub, governor, stored));
+            pipelines.add(new SObjectPipeline(config, sobject, rest, bulkQuery, sobjectPubSub, governor, stored));
         }
-        LOG.info("Salesforce source task started for SObjects {}", config.taskSobjects());
+        for (String event : events) {
+            Map<String, Object> stored = context.offsetStorageReader()
+                    .offset(PlatformEventOffset.partition(event));
+            pipelines.add(new PlatformEventPipeline(config, event, pubsub, stored));
+        }
+        LOG.info("Salesforce source task started for SObjects {} and platform events {}",
+                config.taskSobjects(), events);
     }
 
     @Override
@@ -60,18 +72,18 @@ public class SalesforceSourceTask extends SourceTask {
         }
         List<SourceRecord> out = new ArrayList<>();
         ConnectException firstFailure = null;
-        for (SObjectPipeline pipeline : pipelines) {
+        for (SourcePipeline pipeline : pipelines) {
             try {
                 out.addAll(pipeline.poll());
             } catch (FatalPipelineException e) {
                 // Unrecoverable: hand over what the other pipelines produced, then fail the task.
-                LOG.error("Pipeline for {} failed permanently", pipeline.sobject(), e);
+                LOG.error("Pipeline for {} failed permanently", pipeline.name(), e);
                 if (fatal == null) {
                     fatal = e;
                 }
             } catch (ConnectException e) {
-                // Isolate per-SObject failures: emit what other pipelines produced first.
-                LOG.error("Pipeline for {} failed", pipeline.sobject(), e);
+                // Isolate per-pipeline failures: emit what other pipelines produced first.
+                LOG.error("Pipeline for {} failed", pipeline.name(), e);
                 if (firstFailure == null) {
                     firstFailure = e;
                 }
@@ -92,11 +104,11 @@ public class SalesforceSourceTask extends SourceTask {
 
     @Override
     public void stop() {
-        for (SObjectPipeline pipeline : pipelines) {
+        for (SourcePipeline pipeline : pipelines) {
             try {
                 pipeline.close();
             } catch (RuntimeException e) {
-                LOG.warn("Error closing pipeline for {}", pipeline.sobject(), e);
+                LOG.warn("Error closing pipeline for {}", pipeline.name(), e);
             }
         }
         if (pubsub != null) {

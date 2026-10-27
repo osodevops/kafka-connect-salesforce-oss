@@ -1,0 +1,15 @@
+{
+  "name": "salesforce-platform-events",
+  "config": {
+    "connector.class": "sh.oso.salesforce.source.SalesforceSourceConnector",
+    "tasks.max": "1",
+    "sf.auth.grant.type": "client_credentials",
+    "sf.instance.url": "https://YOUR_DOMAIN.my.salesforce.com",
+    "sf.consumer.key": "${file:/secrets/sf.properties:consumer.key}",
+    "sf.consumer.secret": "${file:/secrets/sf.properties:consumer.secret}",
+    "sf.platform.events": "Order_Shipped__e",
+    "sf.topic.prefix": "salesforce",
+    "sf.event.start": "latest",
+    "sf.gap.recovery": "resync"
+  }
+}

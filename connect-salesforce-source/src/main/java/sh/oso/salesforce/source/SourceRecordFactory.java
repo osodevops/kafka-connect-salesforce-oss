@@ -96,8 +96,7 @@ final class SourceRecordFactory {
             if (ChangeEventUtils.HEADER_FIELD.equals(field.name())) {
                 continue;
             }
-            Schema fieldSchema = AvroToConnect.toConnectSchema(nullable(field.schema()));
-            builder.field(field.name(), fieldSchema);
+            builder.field(field.name(), AvroToConnect.toOptionalConnectSchema(field.schema()));
         }
         builder.field(EVENT_TYPE_FIELD, Schema.OPTIONAL_STRING_SCHEMA);
         builder.field(OBJECT_TYPE_FIELD, Schema.OPTIONAL_STRING_SCHEMA);
@@ -112,15 +111,6 @@ final class SourceRecordFactory {
         builder.field(EVENT_TYPE_FIELD, Schema.OPTIONAL_STRING_SCHEMA);
         builder.field(OBJECT_TYPE_FIELD, Schema.OPTIONAL_STRING_SCHEMA);
         return builder.build();
-    }
-
-    /** CDC events omit unchanged fields; every value field must be optional. */
-    private static org.apache.avro.Schema nullable(org.apache.avro.Schema schema) {
-        if (schema.getType() == org.apache.avro.Schema.Type.UNION) {
-            return schema;
-        }
-        return org.apache.avro.Schema.createUnion(
-                org.apache.avro.Schema.create(org.apache.avro.Schema.Type.NULL), schema);
     }
 
     private ConnectHeaders cdcHeaders(DecodedEvent event, GenericRecord header, String changeType) {

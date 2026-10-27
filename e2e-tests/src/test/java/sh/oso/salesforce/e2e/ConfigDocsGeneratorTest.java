@@ -40,7 +40,9 @@ class ConfigDocsGeneratorTest {
                 """
                 Framework properties (`name`, `tasks.max`, converters, `errors.*`) follow the
                 standard [Kafka Connect worker/connector configuration](https://kafka.apache.org/documentation/#connectconfigs).
-                Topics are derived per SObject as `{sf.topic.prefix}.{SObject}` — there is no `topics` property on the source.
+                Topics are derived per SObject as `{sf.topic.prefix}.{SObject}` and per platform event as
+                `{sf.topic.prefix}.{EventName}` — there is no `topics` property on the source. At least one of
+                `sf.sobjects` and `sf.platform.events` is required.
                 """));
         write("sobject-sink.md", page(
                 "SObject Sink Configuration",

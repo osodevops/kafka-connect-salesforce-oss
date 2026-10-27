@@ -28,7 +28,7 @@ import java.util.Map;
  * (Pub/Sub CDC) or periodic Bulk polling, with seamless snapshot→stream handoff and
  * gap/overflow recovery. Failures in one pipeline do not affect other SObjects.
  */
-final class SObjectPipeline implements AutoCloseable {
+final class SObjectPipeline implements SourcePipeline {
 
     private static final Logger LOG = LoggerFactory.getLogger(SObjectPipeline.class);
     private static final DateTimeFormatter SOQL_DATETIME =
@@ -79,11 +79,13 @@ final class SObjectPipeline implements AutoCloseable {
         LOG.info("Pipeline for {} starting in mode {}", sobject, offset.mode());
     }
 
-    String sobject() {
+    @Override
+    public String name() {
         return sobject;
     }
 
-    List<SourceRecord> poll() throws InterruptedException {
+    @Override
+    public List<SourceRecord> poll() throws InterruptedException {
         return switch (offset.mode()) {
             case SNAPSHOT -> snapshotStep();
             case EVENT_DRIVEN -> eventStep();

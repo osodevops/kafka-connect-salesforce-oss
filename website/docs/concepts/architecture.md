@@ -48,7 +48,8 @@ sidebar_position: 1
 ## The source state machine
 
 Each SObject pipeline moves through up to three modes, persisted in its offset so
-restarts resume in the right place:
+restarts resume in the right place (platform event pipelines have a single mode: they
+stream `/event/<name>__e` from their stored replay position):
 
 ```
 SNAPSHOT (Bulk 2.0)  ──►  EVENT_DRIVEN (Pub/Sub CDC)

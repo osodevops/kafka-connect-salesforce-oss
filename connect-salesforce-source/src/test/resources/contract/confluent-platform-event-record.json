@@ -1,0 +1,11 @@
+{
+  "CreatedDate": 1767225600000,
+  "CreatedById": "005xx000001X8UzAAK",
+  "Message_Type__c": "UpsertOpportunity",
+  "Sequence__c": 7.0,
+  "Payload__c": "{\"recordId\":\"006xx000001AbCdEF\"}",
+  "ReplayId": "4093842",
+  "EventUuid": "3f2b9c7e-1d4a-4e8b-9a6f-0c5d7e2b1a90",
+  "_ObjectType": "Integration_Message__e",
+  "_EventType": "Qm7tVx2pLk9sRb4nWc8yDg"
+}
