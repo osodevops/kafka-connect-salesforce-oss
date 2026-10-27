@@ -85,6 +85,13 @@ public final class FakePubSubServer implements AutoCloseable {
     private final Set<String> revokedTokens = ConcurrentHashMap.newKeySet();
     private final AtomicReference<String> lastAccessToken = new AtomicReference<>();
     private final AtomicInteger subscribeCalls = new AtomicInteger();
+    private final java.util.concurrent.ScheduledExecutorService keepalives =
+            java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread t = new Thread(r, "fake-pubsub-keepalive");
+                t.setDaemon(true);
+                return t;
+            });
+    private volatile long firstKeepaliveDelayMillis;
     private Server server;
 
     public FakePubSubServer start() throws IOException {
@@ -231,6 +238,15 @@ public final class FakePubSubServer implements AutoCloseable {
         return subscribeCalls.get();
     }
 
+    /**
+     * Delays the first FetchResponse on a new subscription, as Salesforce does: an idle
+     * subscription hears nothing until an event arrives or the keepalive after about 270 s.
+     * Default 0 acknowledges immediately.
+     */
+    public void setFirstKeepaliveDelay(java.time.Duration delay) {
+        firstKeepaliveDelayMillis = delay.toMillis();
+    }
+
     /** Per-event publish failure injection: return an error message to fail an event, null to accept. */
     public void setPublishFailer(java.util.function.Function<ProducerEvent, String> failer) {
         publishFailer.set(failer != null ? failer : e -> null);
@@ -278,6 +294,7 @@ public final class FakePubSubServer implements AutoCloseable {
 
     @Override
     public void close() {
+        keepalives.shutdownNow();
         if (server != null) {
             server.shutdownNow();
         }
@@ -338,6 +355,7 @@ public final class FakePubSubServer implements AutoCloseable {
         private int cursor; // index of next event to deliver
         private int demand;
         private boolean failed;
+        private boolean responded;
 
         Subscriber(TopicState topic, StreamObserver<FetchResponse> out, int startIndex) {
             this.topic = topic;
@@ -348,6 +366,20 @@ public final class FakePubSubServer implements AutoCloseable {
         synchronized void addDemand(int numRequested) {
             demand += numRequested;
             deliverPending();
+        }
+
+        /** Sends a keepalive carrying the latest replayId unless the stream has already answered. */
+        synchronized void keepaliveIfSilent() {
+            if (failed || responded) {
+                return;
+            }
+            byte[] latest;
+            synchronized (topic) {
+                latest = topic.events.isEmpty() ? replayIdAt(0)
+                        : topic.events.get(topic.events.size() - 1).replayId;
+            }
+            responded = true;
+            out.onNext(FetchResponse.newBuilder().setLatestReplayId(ByteString.copyFrom(latest)).build());
         }
 
         synchronized void fail(Failure failure) {
@@ -386,6 +418,7 @@ public final class FakePubSubServer implements AutoCloseable {
                                 .setSchemaId(event.schemaId)
                                 .setPayload(ByteString.copyFrom(event.payload))));
             }
+            responded = true;
             out.onNext(response.build());
         }
     }
@@ -514,16 +547,16 @@ public final class FakePubSubServer implements AutoCloseable {
                         }
                         subscriber = new Subscriber(topic, responseObserver, start);
                         topic.subscribers.add(subscriber);
-                        // Keepalive acknowledging the subscription, like the real service:
-                        // an empty FetchResponse carrying the latest replayId.
-                        byte[] latest;
-                        synchronized (topic) {
-                            latest = topic.events.isEmpty() ? replayIdAt(0)
-                                    : topic.events.get(topic.events.size() - 1).replayId();
+                        // Keepalive acknowledging the subscription: an empty FetchResponse
+                        // carrying the latest replayId, immediately or after the configured delay.
+                        long delay = firstKeepaliveDelayMillis;
+                        if (delay <= 0) {
+                            subscriber.keepaliveIfSilent();
+                        } else {
+                            Subscriber pending = subscriber;
+                            keepalives.schedule(pending::keepaliveIfSilent, delay,
+                                    java.util.concurrent.TimeUnit.MILLISECONDS);
                         }
-                        responseObserver.onNext(FetchResponse.newBuilder()
-                                .setLatestReplayId(ByteString.copyFrom(latest))
-                                .build());
                     }
                     subscriber.addDemand(request.getNumRequested());
                 }

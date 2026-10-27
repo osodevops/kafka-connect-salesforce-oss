@@ -68,6 +68,27 @@ class SnapshotHandoffTest {
     }
 
     @Test
+    void snapshotWaitsForSalesforceToAcknowledgeTheProbeWithoutBlocking() throws Exception {
+        // Real Salesforce answers an idle subscription only with its keepalive (about 270 s);
+        // the probe must wait for it without stalling the task's poll loop.
+        pubsub.setFirstKeepaliveDelay(java.time.Duration.ofMillis(1500));
+        sf.enqueueBulkQueryResultPages(List.of("\"Id\",\"Name\"\n\"001S1\",\"Snap\"\n"));
+
+        harness.start();
+        long started = System.currentTimeMillis();
+        assertThat(harness.poll()).isEmpty();
+        assertThat(System.currentTimeMillis() - started).isLessThan(1000);
+        assertThat(sf.bulk().allQueryJobs()).isEmpty(); // no snapshot before the position is known
+
+        List<SourceRecord> snapshot = harness.pollUntil(1, 10_000);
+        assertThat(snapshot).extracting(SourceRecord::key).containsExactly("001S1");
+
+        pubsub.publishEvent(TOPIC, TestSchemas.accountChangeEvent(
+                schema, "UPDATE", "001S1", System.currentTimeMillis() + 60_000, "After"));
+        assertThat(harness.pollUntil(1, 10_000)).extracting(SourceRecord::key).containsExactly("001S1");
+    }
+
+    @Test
     void eventsDuringSnapshotAreReplayedFromProbe() throws Exception {
         // Delay snapshot completion by one extra poll so an event lands mid-snapshot.
         sf.enqueueBulkQueryResultPages(List.of(
