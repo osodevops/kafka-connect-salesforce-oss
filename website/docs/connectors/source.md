@@ -101,7 +101,8 @@ was published**. The connector makes no calls back to Salesforce for platform ev
 
 This is the shape consumers of Confluent's Platform Event source already read, so they keep
 working after a [migration](../migration/confluent.md). For example, with `JsonConverter`
-and `schemas.enable=false`:
+and `schemas.enable=false` (the [walkthrough](../getting-started/platform-events-walkthrough.md)
+shows records captured from a real org):
 
 ```json
 {

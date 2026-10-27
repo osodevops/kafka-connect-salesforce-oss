@@ -18,7 +18,7 @@ is verified against it in CI, with no Salesforce org and no secrets.
 | Component | Simulates | How |
 |---|---|---|
 | `MockSalesforceServer` | OAuth token endpoint, REST (query/describe/limits/composite), the full Bulk API 2.0 job lifecycle | WireMock + a stateful job-store transformer. The token response's `instance_url` points back at the mock, so an authenticated client routes all traffic to it |
-| `FakePubSubServer` | The Pub/Sub API (`eventbus.v1.PubSub`) | grpc-java service with in-memory topics, real Avro encoding, monotonic replayIds, `LATEST`/`EARLIEST`/`CUSTOM` replay semantics, `num_requested` flow control, and fault injection (subscribe and mid-stream failures, retention expiry, token revocation, schema evolution, undecodable payloads, per-event publish failures) |
+| `FakePubSubServer` | The Pub/Sub API (`eventbus.v1.PubSub`) | grpc-java service with in-memory topics, real Avro encoding, monotonic Salesforce-shaped replayIds (8-byte position plus partition bytes), `LATEST`/`EARLIEST`/`CUSTOM` replay semantics, `num_requested` flow control, and fault injection (subscribe and mid-stream failures, retention expiry, token revocation, schema evolution, undecodable payloads, per-event publish failures) |
 | `BayeuxStubServer` | The legacy Streaming API's CometD endpoint | Protocol-level stub of handshake/connect/subscribe with the Salesforce replay extension, retained-event buffer, and invalid-replayId rejection |
 
 Every connector exposes endpoint overrides that make this possible (and double as proxy
@@ -68,6 +68,7 @@ pubsub.revokeAccessToken(pubsub.lastAccessToken());         // expired session
 sf.rotateToken();                                           // next OAuth call issues a new token
 pubsub.updateTopicSchema(topic, evolvedSchema);             // field added mid-stream
 pubsub.publishRawEvent(topic, new byte[0]);                 // undecodable payload
+pubsub.setFirstKeepaliveDelay(Duration.ofSeconds(2));       // Salesforce-like delayed first response
 pubsub.setPublishFailer(e -> "LIMIT_EXCEEDED");             // per-event publish errors
 sf.bulk().setIngestRowFailer(row ->                          // per-row Bulk failures
     row.contains("Bad") ? "REQUIRED_FIELD_MISSING" : null);

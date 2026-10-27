@@ -30,6 +30,7 @@ const sidebars = {
       items: [
         'getting-started/salesforce-setup',
         'getting-started/quickstart',
+        'getting-started/platform-events-walkthrough',
       ],
     },
     {
