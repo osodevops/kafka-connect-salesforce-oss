@@ -13,7 +13,7 @@ import sh.oso.salesforce.testing.FakePubSubServer;
 import sh.oso.salesforce.testing.MockSalesforceServer;
 import sh.oso.salesforce.testing.TestSchemas;
 
-import java.math.BigInteger;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -92,7 +92,8 @@ class PlatformEventSourceTaskTest {
         assertThat(value.getString("Message_Type__c")).isEqualTo("UpsertOpportunity");
         assertThat(value.getString("Payload__c")).isEqualTo(payload).hasSizeGreaterThan(20_000);
         // Metadata in the shape consumers of Confluent's Platform Event source expect.
-        assertThat(value.getString("ReplayId")).isEqualTo(new BigInteger(1, replayId).toString());
+        // Salesforce's numeric ReplayId: the 8-byte position at the start of the replay ID.
+        assertThat(value.getString("ReplayId")).isEqualTo(Long.toUnsignedString(ByteBuffer.wrap(replayId).getLong()));
         assertThat(value.getString("EventUuid")).isEqualTo(pubsub.eventId(CHANNEL, replayId));
         assertThat(value.getString("_ObjectType")).isEqualTo(EVENT);
         assertThat(value.getString("_EventType")).isEqualTo(schemaId);

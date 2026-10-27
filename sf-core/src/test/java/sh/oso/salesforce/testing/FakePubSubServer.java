@@ -66,6 +66,10 @@ public final class FakePubSubServer implements AutoCloseable {
             "sfdc.platform.eventbus.grpc.subscription.fetch.replayid.corrupted";
     public static final String AUTH_ERROR = "sfdc.platform.eventbus.grpc.service.auth.error";
 
+    // Replay IDs shaped like Salesforce's: an 8-byte big-endian position, then partition bytes.
+    private static final byte[] PARTITION_SUFFIX =
+            "\0\u0013N-fake1.sfdc-local".getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+
     private static final Metadata.Key<String> ACCESS_TOKEN =
             Metadata.Key.of("accesstoken", Metadata.ASCII_STRING_MARSHALLER);
 
@@ -235,13 +239,21 @@ public final class FakePubSubServer implements AutoCloseable {
     public byte[] latestReplayId(String topicName) {
         TopicState topic = requireTopic(topicName);
         synchronized (topic) {
-            return topic.events.isEmpty() ? new byte[]{0}
+            return topic.events.isEmpty() ? replayIdAt(0)
                     : topic.events.get(topic.events.size() - 1).replayId;
         }
     }
 
     private byte[] nextReplayId() {
-        return ByteBuffer.allocate(8).putLong(replaySequence.incrementAndGet()).array();
+        return replayIdAt(replaySequence.incrementAndGet());
+    }
+
+    private static byte[] replayIdAt(long position) {
+        return ByteBuffer.allocate(8 + PARTITION_SUFFIX.length).putLong(position).put(PARTITION_SUFFIX).array();
+    }
+
+    private static java.math.BigInteger position(byte[] replayId) {
+        return new java.math.BigInteger(1, java.util.Arrays.copyOf(replayId, 8));
     }
 
     private TopicState requireTopic(String topicName) {
@@ -357,7 +369,7 @@ public final class FakePubSubServer implements AutoCloseable {
                     cursor++;
                     demand--;
                 }
-                latest = topic.events.isEmpty() ? new byte[]{0}
+                latest = topic.events.isEmpty() ? replayIdAt(0)
                         : topic.events.get(topic.events.size() - 1).replayId;
             }
             if (batch.isEmpty()) {
@@ -506,7 +518,7 @@ public final class FakePubSubServer implements AutoCloseable {
                         // an empty FetchResponse carrying the latest replayId.
                         byte[] latest;
                         synchronized (topic) {
-                            latest = topic.events.isEmpty() ? new byte[]{0}
+                            latest = topic.events.isEmpty() ? replayIdAt(0)
                                     : topic.events.get(topic.events.size() - 1).replayId();
                         }
                         responseObserver.onNext(FetchResponse.newBuilder()
@@ -546,16 +558,15 @@ public final class FakePubSubServer implements AutoCloseable {
                 }
                 if (request.getReplayPreset() == ReplayPreset.CUSTOM) {
                     byte[] wanted = request.getReplayId().toByteArray();
-                    if (wanted.length == 0 || wanted.length > 8) {
+                    if (wanted.length < 8) {
                         return null; // corrupted
                     }
                     // Positional semantics like the real service: resume strictly after the
                     // given position. Keepalive replayIds (not tied to an event) are valid.
-                    java.math.BigInteger position = new java.math.BigInteger(1, wanted);
+                    java.math.BigInteger position = position(wanted);
                     int start = topic.events.size();
                     for (int i = 0; i < topic.events.size(); i++) {
-                        java.math.BigInteger eventPosition =
-                                new java.math.BigInteger(1, topic.events.get(i).replayId);
+                        java.math.BigInteger eventPosition = position(topic.events.get(i).replayId);
                         if (eventPosition.compareTo(position) > 0) {
                             start = i;
                             break;

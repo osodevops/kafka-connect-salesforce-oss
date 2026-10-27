@@ -30,7 +30,6 @@ import sh.oso.salesforce.testing.FakePubSubServer;
 import sh.oso.salesforce.testing.MockSalesforceServer;
 import sh.oso.salesforce.testing.TestSchemas;
 
-import java.math.BigInteger;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -235,7 +234,8 @@ class ConnectClusterEndToEndIT {
             assertThat(value.path("CreatedDate").isIntegralNumber()).isTrue();
             assertThat(value.path("CreatedDate").asLong()).isEqualTo(1_767_225_600_000L);
             assertThat(value.path("Payload__c").asText()).isEqualTo(payload);
-            assertThat(value.path("ReplayId").asText()).isEqualTo(new BigInteger(1, first).toString());
+            assertThat(value.path("ReplayId").asText())
+                    .isEqualTo(Long.toUnsignedString(java.nio.ByteBuffer.wrap(first).getLong()));
             assertThat(value.path("EventUuid").asText()).isEqualTo(pubsub.eventId(PE_CHANNEL, first));
             assertThat(value.path("_ObjectType").asText()).isEqualTo(PLATFORM_EVENT);
             assertThat(value.path("_EventType").asText()).isEqualTo(peSchemaId);

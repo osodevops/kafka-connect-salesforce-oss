@@ -18,10 +18,13 @@ class ReplayIdsTest {
     }
 
     @Test
-    void longerReplayIdFallsBackToBase64() {
-        byte[] replayId = new byte[9];
-        replayId[8] = 1;
-        assertThat(ReplayIds.toDisplayString(replayId)).isEqualTo(ReplayIds.toBase64(replayId));
+    void salesforceShapedReplayIdRendersItsPosition() {
+        // As delivered by the Pub/Sub API: 8-byte position, then the event bus partition.
+        byte[] replayId = ByteBuffer.allocate(29).putLong(4_093_842L)
+                .put(new byte[]{0, 0x13}).put("N-core9.sfdc-test".getBytes(java.nio.charset.StandardCharsets.US_ASCII))
+                .array();
+        assertThat(ReplayIds.toDisplayString(replayId)).isEqualTo("4093842");
+        assertThat(ReplayIds.toDisplayString(new byte[0])).isEmpty();
     }
 
     @Test

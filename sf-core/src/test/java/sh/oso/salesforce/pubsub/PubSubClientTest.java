@@ -135,7 +135,7 @@ class PubSubClientTest {
     @Test
     void corruptedCustomReplaySurfacesTypedException() {
         try (PubSubSubscription subscription = client.subscribe(
-                SubscribeOptions.custom(TOPIC, new byte[9], 10))) {
+                SubscribeOptions.custom(TOPIC, new byte[3], 10))) {
             assertThatThrownBy(() -> subscription.poll(10, 2000))
                     .isInstanceOfSatisfying(PubSubStreamException.class, e -> {
                         assertThat(e.isInvalidReplay()).isTrue();
