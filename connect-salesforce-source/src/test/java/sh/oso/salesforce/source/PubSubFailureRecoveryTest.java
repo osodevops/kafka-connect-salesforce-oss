@@ -262,12 +262,12 @@ class PubSubFailureRecoveryTest {
     }
 
     @Test
-    void snapshotProbeOnMissingCdcChannelFailsFast() {
+    void snapshotProbeOnMissingCdcChannelFailsFast() throws Exception {
         harness.with(SourceConfig.SOBJECTS, "Contact").with(SourceConfig.SNAPSHOT_ENABLED, "true");
         harness.start();
 
         long started = System.currentTimeMillis();
-        assertThatThrownBy(harness::poll)
+        assertThat(pollUntilFailure(new ArrayList<>(), 5000))
                 .isInstanceOf(FatalPipelineException.class)
                 .hasMessageContaining("Enable Change Data Capture for Contact");
         assertThat(System.currentTimeMillis() - started).isLessThan(5000);

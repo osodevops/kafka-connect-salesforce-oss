@@ -33,7 +33,8 @@ final class ResilientSubscription implements AutoCloseable {
 
     private static final Logger LOG = LoggerFactory.getLogger(ResilientSubscription.class);
     private static final long POLL_TIMEOUT_MS = 100;
-    private static final long PROBE_TIMEOUT_MS = 30_000;
+    // Salesforce acknowledges an idle subscription only with its keepalive, within about 270 s.
+    private static final long PROBE_TIMEOUT_MS = 330_000;
     private static final int MAX_CONSECUTIVE_AUTH_FAILURES = 3;
 
     private final PubSubClient pubsub;
@@ -44,6 +45,8 @@ final class ResilientSubscription implements AutoCloseable {
     private final Backoff backoff = new Backoff();
 
     private PubSubSubscription subscription;
+    private PubSubSubscription probe;
+    private long probeStartedAt;
     private boolean delivered;
     private byte[] knownPosition;
     private int authFailures;
@@ -102,30 +105,53 @@ final class ResilientSubscription implements AutoCloseable {
     }
 
     /**
-     * Opens a short-lived LATEST subscription and returns the topic's current replay position,
-     * or null when a transient failure means the caller should try again later.
+     * Returns the topic's current replay position once a LATEST probe subscription has been
+     * acknowledged, or null while it is pending or after a transient failure. Never blocks:
+     * Salesforce answers an idle subscription only when an event arrives or with its keepalive
+     * (within about 270 s), so the caller asks again on later polls.
      */
     byte[] probeLatestReplayId() throws InterruptedException {
-        if (!backoff.ready()) {
-            return null;
-        }
-        try (PubSubSubscription probe = pubsub.subscribe(SubscribeOptions.latest(topicName, batchSize))) {
-            try {
-                if (!probe.awaitEstablished(PROBE_TIMEOUT_MS)) {
-                    LOG.warn("Timed out probing {}; will retry", topicName);
-                    backoff.failed();
-                    return null;
-                }
-            } catch (SalesforceException e) {
-                retryOrFail(e, probe.session());
+        if (probe == null) {
+            if (!backoff.ready()) {
                 return null;
             }
-            backoff.reset();
-            authFailures = 0;
-            return probe.latestReplayId();
+            try {
+                probe = pubsub.subscribe(SubscribeOptions.latest(topicName, batchSize));
+            } catch (SalesforceException e) {
+                retryOrFail(e, null);
+                return null;
+            }
+            probeStartedAt = System.currentTimeMillis();
+            LOG.info("Probing the current position of {}; Salesforce answers when an event arrives "
+                    + "or with its keepalive, within about 270 s", topicName);
+        }
+        try {
+            if (probe.awaitEstablished(0) && probe.latestReplayId() != null) {
+                byte[] position = probe.latestReplayId();
+                closeProbe();
+                backoff.reset();
+                authFailures = 0;
+                return position;
+            }
         } catch (SalesforceException e) {
-            retryOrFail(e, null);
+            Session session = probe.session();
+            closeProbe();
+            retryOrFail(e, session);
             return null;
+        }
+        if (probe.isBroken() || System.currentTimeMillis() - probeStartedAt > PROBE_TIMEOUT_MS) {
+            LOG.warn("No position from {} after {} s; probing again", topicName,
+                    (System.currentTimeMillis() - probeStartedAt) / 1000);
+            closeProbe();
+            backoff.failed();
+        }
+        return null;
+    }
+
+    private void closeProbe() {
+        if (probe != null) {
+            probe.close();
+            probe = null;
         }
     }
 
@@ -213,6 +239,7 @@ final class ResilientSubscription implements AutoCloseable {
 
     @Override
     public void close() {
+        closeProbe();
         closeStream();
     }
 }
