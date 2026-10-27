@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/osodevops/kafka-connect-salesforce-oss/compare/v0.2.0...v0.2.1) (2026-10-27)
+
+
+### Bug Fixes
+
+* **build:** publish to Maven Central with central-publishing-maven-plugin 0.12.0 ([#33](https://github.com/osodevops/kafka-connect-salesforce-oss/issues/33)) ([300fce3](https://github.com/osodevops/kafka-connect-salesforce-oss/commit/300fce3cdb5fb3d93e03abc40fd305002b7bc4b7))
+
 ## [0.2.0](https://github.com/osodevops/kafka-connect-salesforce-oss/compare/v0.1.0...v0.2.0) (2026-10-27)
 
 
