@@ -10,5 +10,23 @@ dependency-reduced-pom.xml
 *.log
 .flattened-pom.xml
 
-# Local sales material (proposals, client correspondence) — never commit
+# Local sales material (proposals, client correspondence, research) — never commit
 sales/
+
+# Local agent skills, settings and working files
+/.agents/
+/.codex/
+/.claude/
+/skills/
+
+# Local credentials and secrets
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+*.pem
+*.p12
+*.pfx
+*.key
+*credentials*.json
