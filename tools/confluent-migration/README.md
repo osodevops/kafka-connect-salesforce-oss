@@ -5,18 +5,26 @@ Two dependency-free Python 3.9+ scripts supporting the
 
 ## `confluent2oss.py` — config translator
 
-Converts any Confluent Salesforce connector config (CDC/PushTopic/Platform Event/Bulk
-sources, SObject/Bulk/Platform Event sinks) into the equivalent `sh.oso` connector
-config, with a per-property migration report.
+Converts Confluent Salesforce connector configs (CDC/PushTopic/Platform Event/Bulk
+sources, SObject/Bulk/Platform Event sinks), self-managed or Confluent Cloud, into the
+equivalent `sh.oso` connector config, with a per-property migration report.
 
 ```bash
 curl -s http://connect:8083/connectors/sf-cdc-prod | ./confluent2oss.py - -o new.json
 ```
 
 - maps property names *and* normalizes enum values (`CLIENT_CREDENTIALS` → `client_credentials`)
-- drops obsolete Confluent licensing properties
-- flags anything needing a human decision (`reporter.*` topics → Connect DLQ, CSFLE)
+- recognises Confluent Cloud plugin names (`SalesforcePlatformEventSource`, `SalesforceSourceV2`, ...)
+- Platform Event sources: `sf.platform.events`, and a `RegexRouter` transform that keeps an
+  exact `kafka.topic`; `output.data.format=JSON` becomes the equivalent `JsonConverter` settings
+- drops obsolete Confluent licensing properties and Confluent Cloud Kafka credentials
+  (values are never echoed in the report)
+- flags anything needing a human decision (`reporter.*` topics → Connect DLQ, CSFLE,
+  schema-based output formats, a missing JWT key path)
 - exit code `2` when manual follow-ups exist — safe to gate in scripts
+
+Tests: `python3 -B -m unittest discover -s tools/confluent-migration -p 'test_*.py' -v`
+(run in CI).
 
 ## `verify_cutover.py` — post-cutover evidence
 

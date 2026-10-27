@@ -34,7 +34,7 @@ machine-readable evidence that the migration worked**.
 | Confluent connector | Replacement | Notes |
 |---|---|---|
 | Salesforce CDC Source | [Source](../connectors/source.md) (event-driven mode) | Pub/Sub transport instead of CometD |
-| Salesforce Platform Event Source | [Source](../connectors/source.md) | |
+| Salesforce Platform Event Source | [Source](../connectors/source.md) (`sf.platform.events`, from 0.2.0) | Same record shape; the translator keeps your exact `kafka.topic` |
 | Salesforce Bulk API 1.0 / 2.0 Source | [Source](../connectors/source.md) (snapshot/polling) | Bulk 2.0 only |
 | Salesforce Source V2 | [Source](../connectors/source.md) | Same architecture |
 | Salesforce PushTopic Source | [Streaming source](../connectors/streaming-source.md) | PushTopics only exist on CometD |
@@ -78,6 +78,11 @@ It exits non-zero when anything needs manual attention. Typical manual items:
 Confluent reporter topics → Connect's native DLQ (`errors.deadletterqueue.*`), and
 CSFLE (not yet supported — keep those fields unencrypted or hold that connector back).
 
+Confluent Cloud exports work too: the fully-managed plugin names (`SalesforcePlatformEventSource`,
+`SalesforceSourceV2`, `SalesforcePushTopicSource`, `SalesforceSObjectSink` and the rest) are
+recognised, and Cloud-only Kafka credentials (`kafka.auth.mode`, `kafka.api.key`,
+`kafka.service.account.id`) are dropped because your Connect worker supplies its own.
+
 ## Step 2 — Rehearse in staging
 
 Point the translated config at a sandbox org (`sf.jwt.audience=https://test.salesforce.com`)
@@ -90,6 +95,28 @@ and your staging Kafka. Two things to confirm:
 - **Converters**: the OSS connectors emit standard Connect Structs — keep whatever
   key/value converters you use today.
 
+### Platform Event sources
+
+A Confluent Platform Event source writes one event to one exact `kafka.topic`; the OSS
+source writes `{sf.topic.prefix}.{EventName}`. When your topic already has that shape the
+translator derives the prefix; otherwise it adds a `RegexRouter` transform, ahead of any
+transforms you already have, so records keep landing on the same topic:
+
+```json
+"sf.platform.events": "Order_Shipped__e",
+"sf.topic.prefix": "salesforce",
+"transforms": "sfPlatformEventTopic",
+"transforms.sfPlatformEventTopic.type": "org.apache.kafka.connect.transforms.RegexRouter",
+"transforms.sfPlatformEventTopic.regex": "^salesforce\\.Order_Shipped__e$",
+"transforms.sfPlatformEventTopic.replacement": "orders-shipped"
+```
+
+`output.data.format=JSON` becomes `JsonConverter` with `schemas.enable=false`, the same
+JSON. For `AVRO`, `JSON_SR` or `PROTOBUF` the report names the converter to set; Schema
+Registry may reject the OSS value schema on a subject that already holds the Confluent
+connector's schema, so either start a new topic or relax that subject's compatibility for
+the cutover.
+
 ## Step 3 — Prepare consumers
 
 Offsets are **not transferable** between connector implementations — the Confluent
@@ -100,7 +127,7 @@ window of events the old connector already delivered.
 That means a short burst of **duplicates, never gaps**. Before cutover, confirm your
 consumers are idempotent — dedupe on the record key (Salesforce Id) plus the
 `sf.commit.timestamp` header (or `SystemModstamp` field). Sinks that upsert by external
-ID are already safe.
+ID are already safe. Platform event records have no key: dedupe them on `EventUuid`.
 
 ## Step 4 — Cut over
 
@@ -226,6 +253,17 @@ you're still licensed, and confirm terms with your Confluent agreement.
 | `behavior.on.api.errors` | `behavior.on.api.errors` (same) |
 | reporter topics (`reporter.*`) | Connect-native DLQ (`errors.deadletterqueue.*`) |
 
+### Platform Event source
+
+| Confluent | OSS |
+|---|---|
+| `salesforce.platform.event.name` | `sf.platform.events` |
+| `kafka.topic` | `sf.topic.prefix`, plus a `RegexRouter` transform when the topic is not `{prefix}.{EventName}` |
+| `salesforce.initial.start` (`latest` / `all`) | `sf.event.start` (`latest` / `all`) |
+| `output.data.format=JSON` | `value.converter=JsonConverter`, `value.converter.schemas.enable=false` |
+| `request.max.retries.time.ms` | `sf.request.max.retries.time.ms` |
+| `connection.timeout` | dropped (Pub/Sub manages its own timeouts) |
+
 ### Platform Event sink
 
 | Confluent | OSS |
@@ -236,7 +274,12 @@ you're still licensed, and confirm terms with your Confluent agreement.
 ### Behavioural differences to review
 
 - Record shape is compatible (`_EventType`/`_ObjectType`); CDC metadata additionally
-  arrives in `sf.*` record headers.
+  arrives in `sf.*` record headers. Platform event records carry the event's fields plus
+  `ReplayId`, `EventUuid`, `_ObjectType` and `_EventType` (the Pub/Sub schema ID), with a
+  null key.
+- `verify_cutover.py` checks SObject data against a SOQL query; platform events cannot be
+  queried, so compare `EventUuid` sets across the overlap instead. While both connectors
+  run side by side, each delivery counts against the org's event delivery allocation.
 - Source offsets don't transfer (hence the replay cutover above); sink consumer-group
   offsets do.
 - Bulk API 1.0 is not implemented (retired by Salesforce); Bulk 2.0 covers those
