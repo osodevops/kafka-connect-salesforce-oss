@@ -7,6 +7,7 @@ import org.apache.kafka.common.config.ConfigDef.Type;
 import org.apache.kafka.common.config.ConfigException;
 import org.apache.kafka.common.config.types.Password;
 import sh.oso.salesforce.auth.AuthConfig;
+import sh.oso.salesforce.pubsub.PlatformEvents;
 
 import java.util.Locale;
 import java.util.Map;
@@ -63,8 +64,8 @@ public class StreamingConfig extends AbstractConfig {
             }
             case PLATFORM_EVENT -> {
                 String name = getString(PLATFORM_EVENT_NAME);
-                if (name == null || !name.matches(".*__e$")) {
-                    throw new ConfigException(PLATFORM_EVENT_NAME, name, "Must match .*__e$");
+                if (!PlatformEvents.isValidName(name)) {
+                    throw new ConfigException(PLATFORM_EVENT_NAME, name, PlatformEvents.NAME_RULE);
                 }
             }
             case CDC -> {
@@ -168,7 +169,7 @@ public class StreamingConfig extends AbstractConfig {
         return switch (channelType()) {
             case PUSHTOPIC -> "/topic/" + getString(PUSHTOPIC_NAME);
             case CDC -> "/data/" + getString(CDC_CHANNEL);
-            case PLATFORM_EVENT -> "/event/" + getString(PLATFORM_EVENT_NAME);
+            case PLATFORM_EVENT -> PlatformEvents.channel(getString(PLATFORM_EVENT_NAME));
         };
     }
 

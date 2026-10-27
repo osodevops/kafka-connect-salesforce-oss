@@ -13,7 +13,8 @@ import java.util.Map;
 
 /**
  * Unified Salesforce source connector: historical snapshot (Bulk API 2.0) plus event-driven
- * sync (Pub/Sub API) or periodic polling (Bulk API 2.0), per SObject.
+ * sync (Pub/Sub API) or periodic polling (Bulk API 2.0), per SObject; and platform event
+ * streams over the Pub/Sub API.
  */
 public class SalesforceSourceConnector extends SourceConnector {
 
@@ -32,25 +33,36 @@ public class SalesforceSourceConnector extends SourceConnector {
         return SalesforceSourceTask.class;
     }
 
+    /** Spreads SObjects, then platform events, round-robin across at most one task per stream. */
     @Override
     public List<Map<String, String>> taskConfigs(int maxTasks) {
-        List<String> sobjects = new SourceConfig(originals).sobjects();
-        int taskCount = Math.min(maxTasks, sobjects.size());
-        if (maxTasks > sobjects.size()) {
-            LOG.info("tasks.max={} exceeds SObject count {}; {} task(s) will be created",
-                    maxTasks, sobjects.size(), taskCount);
+        SourceConfig config = new SourceConfig(originals);
+        List<String> sobjects = config.sobjects();
+        List<String> events = config.platformEvents();
+        int streams = sobjects.size() + events.size();
+        int taskCount = Math.min(maxTasks, streams);
+        if (maxTasks > streams) {
+            LOG.info("tasks.max={} exceeds the {} SObject(s) and platform event(s); {} task(s) will be created",
+                    maxTasks, streams, taskCount);
         }
-        List<List<String>> assignments = new ArrayList<>();
+        List<List<String>> sobjectAssignments = new ArrayList<>();
+        List<List<String>> eventAssignments = new ArrayList<>();
         for (int i = 0; i < taskCount; i++) {
-            assignments.add(new ArrayList<>());
+            sobjectAssignments.add(new ArrayList<>());
+            eventAssignments.add(new ArrayList<>());
         }
-        for (int i = 0; i < sobjects.size(); i++) {
-            assignments.get(i % taskCount).add(sobjects.get(i));
+        int slot = 0;
+        for (String sobject : sobjects) {
+            sobjectAssignments.get(slot++ % taskCount).add(sobject);
+        }
+        for (String event : events) {
+            eventAssignments.get(slot++ % taskCount).add(event);
         }
         List<Map<String, String>> configs = new ArrayList<>();
-        for (List<String> assignment : assignments) {
+        for (int i = 0; i < taskCount; i++) {
             Map<String, String> taskConfig = new HashMap<>(originals);
-            taskConfig.put(SourceConfig.TASK_SOBJECTS, String.join(",", assignment));
+            taskConfig.put(SourceConfig.TASK_SOBJECTS, String.join(",", sobjectAssignments.get(i)));
+            taskConfig.put(SourceConfig.TASK_PLATFORM_EVENTS, String.join(",", eventAssignments.get(i)));
             configs.add(taskConfig);
         }
         return configs;

@@ -56,6 +56,59 @@ public final class TestSchemas {
                 .endRecord();
     }
 
+    /**
+     * A "fat" integration platform event, Integration_Message__e: the publisher (a Flow or Apex)
+     * serialises the whole business record as JSON into a long text area field, so consumers
+     * never need to call Salesforce back.
+     */
+    public static Schema integrationMessageEventSchema() {
+        return integrationMessageFields().endRecord();
+    }
+
+    /** {@link #integrationMessageEventSchema()} after an admin added Initiator_Id__c to the event. */
+    public static Schema integrationMessageEventSchemaV2() {
+        return integrationMessageFields()
+                .name("Initiator_Id__c").type().unionOf().nullType().and().stringType().endUnion().nullDefault()
+                .endRecord();
+    }
+
+    private static SchemaBuilder.FieldAssembler<Schema> integrationMessageFields() {
+        return SchemaBuilder.record("Integration_Message__e").namespace("com.sforce.eventbus")
+                .fields()
+                .name("CreatedDate").type().longType().noDefault()
+                .name("CreatedById").type().stringType().noDefault()
+                .name("Message_Type__c").type().unionOf().nullType().and().stringType().endUnion().nullDefault()
+                .name("Sequence__c").type().unionOf().nullType().and().doubleType().endUnion().nullDefault()
+                .name("Payload__c").type().unionOf().nullType().and().stringType().endUnion().nullDefault();
+    }
+
+    /** A sample business payload of roughly {@code approxChars} characters of JSON. */
+    public static String samplePayloadJson(String recordId, int approxChars) {
+        StringBuilder lines = new StringBuilder();
+        int i = 0;
+        while (lines.length() < approxChars) {
+            if (i > 0) {
+                lines.append(',');
+            }
+            lines.append("{\"lineId\":\"L").append(i).append("\",\"description\":\"Consulting services, phase ")
+                    .append(i).append("\",\"amount\":").append(1000 + i).append(".50,\"currency\":\"GBP\"}");
+            i++;
+        }
+        return "{\"recordId\":\"" + recordId + "\",\"name\":\"Example Holdings Ltd\",\"stage\":\"Closed Won\","
+                + "\"address\":{\"city\":\"London\",\"country\":\"GB\"},\"lines\":[" + lines + "]}";
+    }
+
+    public static GenericRecord integrationMessage(Schema schema, String messageType, double sequence,
+                                                   String payloadJson) {
+        GenericRecord event = new GenericData.Record(schema);
+        event.put("CreatedDate", 1_767_225_600_000L);
+        event.put("CreatedById", "005xx000001X8UzAAK");
+        event.put("Message_Type__c", messageType);
+        event.put("Sequence__c", sequence);
+        event.put("Payload__c", payloadJson);
+        return event;
+    }
+
     public static GenericRecord accountChangeEvent(Schema schema, String changeType, String recordId,
                                                    long commitTimestamp, String name) {
         Schema headerSchema = schema.getField("ChangeEventHeader").schema();

@@ -28,6 +28,18 @@ public final class AvroToConnect {
         return toConnectSchema(avro, false);
     }
 
+    /**
+     * Like {@link #toConnectSchema(org.apache.avro.Schema)} but always optional: event payloads
+     * may omit any field (CDC sends only changed fields; platform event fields are optional).
+     */
+    public static Schema toOptionalConnectSchema(org.apache.avro.Schema avro) {
+        if (avro.getType() == org.apache.avro.Schema.Type.UNION) {
+            return toConnectSchema(avro, false);
+        }
+        return toConnectSchema(org.apache.avro.Schema.createUnion(
+                org.apache.avro.Schema.create(org.apache.avro.Schema.Type.NULL), avro));
+    }
+
     private static Schema toConnectSchema(org.apache.avro.Schema avro, boolean optional) {
         return switch (avro.getType()) {
             case RECORD -> {

@@ -19,7 +19,7 @@ with Confluent's eleven, built clean-room from Salesforce's public APIs.
 | [Source](connectors/source.md) | Salesforce → Kafka | Pub/Sub API (gRPC) + Bulk API 2.0 + REST | PushTopic Source, CDC Source, Platform Event Source, Bulk API 1.0/2.0 Source, Source V2 |
 | [SObject Sink](connectors/sobject-sink.md) | Kafka → Salesforce | Bulk API 2.0 + REST Composite | SObject Sink, Bulk API 1.0/2.0 Sink |
 | [Platform Event Sink](connectors/platform-event-sink.md) | Kafka → Salesforce | Pub/Sub API Publish (+ REST) | Platform Event Sink |
-| [Streaming Source (legacy)](connectors/streaming-source.md) | Salesforce → Kafka | Streaming API (CometD/Bayeux) | PushTopic Source on orgs without Pub/Sub API |
+| [Streaming Source (legacy)](connectors/streaming-source.md) | Salesforce → Kafka | Streaming API (CometD/Bayeux) | PushTopic Source, and CDC or Platform Event sources on orgs without Pub/Sub API |
 
 ## Why Pub/Sub API first?
 

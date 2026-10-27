@@ -25,6 +25,11 @@ jobs:
       - name: Build and test
         run: mvn clean verify --batch-mode --no-transfer-progress
 
+      # The configuration reference is generated from each connector's ConfigDef during the
+      # build; fail if the committed pages are stale.
+      - name: Check generated configuration reference is committed
+        run: git diff --exit-code -- website/docs/reference/configuration
+
       - name: Upload connector plugin ZIPs
         if: matrix.java == '17'
         uses: actions/upload-artifact@v4
@@ -41,4 +46,16 @@ jobs:
         with:
           name: migration-evidence
           path: connect-salesforce-source/target/migration-evidence.json
+          retention-days: 90
+
+      # Platform event record contract (JsonConverter rendering) and the Connect-cluster run
+      # (real worker in docker, offsets via REST, task restart without duplicates).
+      - name: Upload platform event evidence reports
+        if: matrix.java == '17'
+        uses: actions/upload-artifact@v4
+        with:
+          name: platform-event-evidence
+          path: |
+            connect-salesforce-source/target/platform-event-evidence.json
+            e2e-tests/target/platform-event-e2e-evidence.json
           retention-days: 90

@@ -28,7 +28,7 @@
 - **Real-time CDC streaming** — Change Data Capture over the Pub/Sub API with replayId checkpointing and 72h replay
 - **Zero-loss snapshot handoff** — Bulk API 2.0 historical backfill that transitions to live CDC with no gap and no duplicates
 - **Salesforce sinks** — insert/update/external-ID upsert/delete via Bulk 2.0 or REST Composite, Big Objects, native DLQ
-- **Platform Events both ways** — consume them into Kafka, publish them from Kafka to trigger Flows and Apex
+- **Platform Events both ways** — stream them into Kafka over the Pub/Sub API with every field as published, and publish them from Kafka to trigger Flows and Apex
 - **Gap recovery** — CDC gap/overflow events re-queried or resynced automatically instead of silently lost
 - **Quota-aware** — a rate governor polls `/limits/` and backs off before your 24h API pool is exhausted
 - **Runs anywhere** — Apache Kafka, MSK Connect, Strimzi, or Confluent Platform; any converter (JSON, Avro, Protobuf)

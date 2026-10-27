@@ -73,8 +73,14 @@ where they left off; longer outages trigger the connector's
 [gap recovery](../concepts/offsets-and-recovery.md).
 :::
 
-## 4. Platform Events (Platform Event sink)
+## 4. Platform Events (source and Platform Event sink)
 
-The Platform Event sink publishes to an **existing** platform event definition. Create it
-under **Setup → Platform Events** — only Checkbox, Date, Date/Time, Number, Text, and
-Text Area field types exist on platform events.
+Both directions work with an **existing** platform event definition. Create it under
+**Setup → Platform Events** — only Checkbox, Date, Date/Time, Number, Text, and Text Area
+(including long text area) field types exist on platform events.
+
+- **Streaming events into Kafka** (`sf.platform.events` on the source connector): give the
+  integration user **Read** access to the event in its permission set (Object Settings).
+  Events are retained for 72 hours, like CDC.
+- **Publishing from Kafka** (Platform Event sink): the integration user needs **Create**
+  access to the event.

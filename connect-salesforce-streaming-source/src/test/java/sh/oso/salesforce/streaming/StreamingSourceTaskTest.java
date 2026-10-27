@@ -177,6 +177,35 @@ class StreamingSourceTaskTest {
     }
 
     @Test
+    void platformEventChannelMapsPayload() throws Exception {
+        Map<String, String> props = baseProps();
+        props.put(StreamingConfig.CHANNEL_TYPE, "platform_event");
+        props.put(StreamingConfig.PLATFORM_EVENT_NAME, "Order_Shipped__e");
+        props.put(StreamingConfig.KAFKA_TOPIC, "sf.${_ObjectType}");
+        props.put(StreamingConfig.EVENT_START, "all");
+        bayeux.publish("/event/Order_Shipped__e", Map.of(
+                "schema", "VrdbV-4eqHB3hllFiCjIrw",
+                "payload", Map.of(
+                        "CreatedDate", "2026-10-27T09:00:00.000Z",
+                        "CreatedById", "005xx000001X8UzAAK",
+                        "OrderNumber__c", "ORD-1001",
+                        "Carrier__c", "DHL")));
+        startTask(props);
+
+        List<SourceRecord> records = pollUntil(1, 5000);
+        assertThat(records).hasSize(1);
+        SourceRecord record = records.get(0);
+        assertThat(record.topic()).isEqualTo("sf.Order_Shipped__e");
+        assertThat(record.key()).isNull();
+        Map<String, Object> value = (Map<String, Object>) record.value();
+        assertThat(value).containsEntry("OrderNumber__c", "ORD-1001")
+                .containsEntry("Carrier__c", "DHL")
+                .containsEntry("CreatedById", "005xx000001X8UzAAK")
+                .containsEntry("_ObjectType", "Order_Shipped__e");
+        assertThat(record.sourcePartition()).isEqualTo(Map.of("channel", "/event/Order_Shipped__e"));
+    }
+
+    @Test
     void invalidReplayFallsBackPerConfig() throws Exception {
         Map<String, String> props = baseProps();
         props.put(StreamingConfig.CHANNEL_TYPE, "cdc");

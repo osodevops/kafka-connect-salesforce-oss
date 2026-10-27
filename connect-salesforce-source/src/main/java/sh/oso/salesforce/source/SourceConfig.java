@@ -7,6 +7,7 @@ import org.apache.kafka.common.config.ConfigDef.Type;
 import org.apache.kafka.common.config.ConfigException;
 import org.apache.kafka.common.config.types.Password;
 import sh.oso.salesforce.auth.AuthConfig;
+import sh.oso.salesforce.pubsub.PlatformEvents;
 
 import java.util.HashSet;
 import java.util.List;
@@ -30,6 +31,7 @@ public class SourceConfig extends AbstractConfig {
     public static final String API_VERSION = "sf.api.version";
     public static final String SOBJECTS = "sf.sobjects";
     public static final String SOBJECTS_MAX = "sf.sobjects.max";
+    public static final String PLATFORM_EVENTS = "sf.platform.events";
     public static final String TOPIC_PREFIX = "sf.topic.prefix";
     public static final String SNAPSHOT_ENABLED = "sf.snapshot.enabled";
     public static final String SNAPSHOT_SINCE = "sf.snapshot.since";
@@ -51,8 +53,9 @@ public class SourceConfig extends AbstractConfig {
     public static final String PUBSUB_PLAINTEXT = "sf.pubsub.plaintext";
     public static final String TOKEN_ENDPOINT = "sf.token.endpoint";
 
-    // Internal: SObjects assigned to one task (set by the connector, not users).
+    // Internal: SObjects and platform events assigned to one task (set by the connector, not users).
     public static final String TASK_SOBJECTS = "sf.task.sobjects";
+    public static final String TASK_PLATFORM_EVENTS = "sf.task.platform.events";
 
     public enum RealtimeMode {EVENT_DRIVEN, POLLING}
 
@@ -84,12 +87,17 @@ public class SourceConfig extends AbstractConfig {
                 .define(JWT_AUDIENCE, Type.STRING, null, Importance.LOW,
                         "JWT aud claim; defaults to https://login.salesforce.com.")
                 .define(API_VERSION, Type.STRING, "60.0", Importance.MEDIUM, "Salesforce API version.")
-                .define(SOBJECTS, Type.LIST, ConfigDef.NO_DEFAULT_VALUE, Importance.HIGH,
-                        "SObject API names to source (exact casing).")
+                .define(SOBJECTS, Type.LIST, "", Importance.HIGH,
+                        "SObject API names to source (exact casing). Required unless "
+                                + PLATFORM_EVENTS + " is set.")
+                .define(PLATFORM_EVENTS, Type.LIST, "", Importance.HIGH,
+                        "Platform event API names to stream over the Pub/Sub API (each ending in __e), "
+                                + "one subscription per event. Each record carries every field of the event; "
+                                + "records go to {prefix}.{EventName} with a null key.")
                 .define(SOBJECTS_MAX, Type.INT, 5, ConfigDef.Range.atLeast(1), Importance.LOW,
-                        "Maximum SObjects per connector instance.")
+                        "Maximum SObjects per connector instance (platform events are not counted).")
                 .define(TOPIC_PREFIX, Type.STRING, ConfigDef.NO_DEFAULT_VALUE, Importance.HIGH,
-                        "Kafka topics are {prefix}.{SObject}.")
+                        "Kafka topics are {prefix}.{SObject} and {prefix}.{EventName}.")
                 .define(SNAPSHOT_ENABLED, Type.BOOLEAN, true, Importance.MEDIUM,
                         "Run a historical Bulk 2.0 snapshot before the real-time mode.")
                 .define(SNAPSHOT_SINCE, Type.STRING, null, Importance.MEDIUM,
@@ -99,10 +107,13 @@ public class SourceConfig extends AbstractConfig {
                         "Continuous ingestion mode after the snapshot.")
                 .define(EVENT_START, Type.STRING, "latest",
                         ConfigDef.ValidString.in("latest", "all"), Importance.MEDIUM,
-                        "Cold-start replay position for event_driven mode.")
+                        "Cold-start replay position for CDC (event_driven mode) and platform event "
+                                + "streams: latest (new events only) or all (everything Salesforce retains, 72 hours).")
                 .define(GAP_RECOVERY, Type.STRING, "resync",
                         ConfigDef.ValidString.in("resync", "latest", "fail"), Importance.MEDIUM,
-                        "Behaviour on gap/overflow events or replay loss.")
+                        "Behaviour on CDC gap/overflow events or when a stored replay position has expired. "
+                                + "For platform events, which cannot be re-queried, resync resubscribes from the "
+                                + "earliest retained event.")
                 .define(GAP_RESYNC_BUFFER_MS, Type.LONG, 60_000L, Importance.LOW,
                         "Safety buffer subtracted from the watermark on gap resync.")
                 .define(FULL_RECORD_ON_UPDATE, Type.BOOLEAN, false, Importance.LOW,
@@ -128,19 +139,45 @@ public class SourceConfig extends AbstractConfig {
                 .define(TOKEN_ENDPOINT, Type.STRING, null, Importance.LOW,
                         "OAuth token endpoint override (testing only).")
                 .define(TASK_SOBJECTS, Type.LIST, "", Importance.LOW,
-                        "Internal: SObjects assigned to this task.");
+                        "Internal: SObjects assigned to this task.")
+                .define(TASK_PLATFORM_EVENTS, Type.LIST, "", Importance.LOW,
+                        "Internal: platform events assigned to this task.");
     }
 
     private void validateCombinations() {
         List<String> sobjects = getList(SOBJECTS);
-        if (sobjects.isEmpty()) {
-            throw new ConfigException(SOBJECTS, sobjects, "At least one SObject is required");
+        List<String> events = getList(PLATFORM_EVENTS);
+        if (sobjects.isEmpty() && events.isEmpty()) {
+            throw new ConfigException(SOBJECTS, sobjects,
+                    "At least one SObject (" + SOBJECTS + ") or platform event (" + PLATFORM_EVENTS + ") is required");
         }
         if (sobjects.size() > getInt(SOBJECTS_MAX)) {
             throw new ConfigException(SOBJECTS, sobjects,
                     "More SObjects than " + SOBJECTS_MAX + "=" + getInt(SOBJECTS_MAX));
         }
+        for (String sobject : sobjects) {
+            if (PlatformEvents.isValidName(sobject)) {
+                throw new ConfigException(SOBJECTS, sobject,
+                        sobject + " is a platform event; list it in " + PLATFORM_EVENTS);
+            }
+        }
+        for (String event : events) {
+            if (!PlatformEvents.isValidName(event)) {
+                throw new ConfigException(PLATFORM_EVENTS, event, PlatformEvents.NAME_RULE);
+            }
+        }
+        rejectDuplicates(SOBJECTS, sobjects);
+        rejectDuplicates(PLATFORM_EVENTS, events);
         authConfig(); // validates flow-specific requirements
+    }
+
+    private static void rejectDuplicates(String key, List<String> names) {
+        Set<String> seen = new HashSet<>();
+        for (String name : names) {
+            if (!seen.add(name)) {
+                throw new ConfigException(key, name, "Listed more than once");
+            }
+        }
     }
 
     public AuthConfig authConfig() {
@@ -167,9 +204,23 @@ public class SourceConfig extends AbstractConfig {
         return getList(SOBJECTS);
     }
 
+    public List<String> platformEvents() {
+        return getList(PLATFORM_EVENTS);
+    }
+
+    /** SObjects this task streams: its assignment, or every SObject when run without a connector. */
     public List<String> taskSobjects() {
-        List<String> assigned = getList(TASK_SOBJECTS);
-        return assigned.isEmpty() ? sobjects() : assigned;
+        return assignedByConnector() ? getList(TASK_SOBJECTS) : sobjects();
+    }
+
+    /** Platform events this task streams: its assignment, or every event when run without a connector. */
+    public List<String> taskPlatformEvents() {
+        return assignedByConnector() ? getList(TASK_PLATFORM_EVENTS) : platformEvents();
+    }
+
+    // A task given only platform events has an empty SObject list, which must not mean "all".
+    private boolean assignedByConnector() {
+        return originals().containsKey(TASK_SOBJECTS) || originals().containsKey(TASK_PLATFORM_EVENTS);
     }
 
     public String topicFor(String sobject) {
