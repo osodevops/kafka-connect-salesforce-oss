@@ -20,8 +20,21 @@ In **Setup → App Manager → New Connected App**:
 ### Client Credentials (recommended for server-to-server)
 
 1. On the Connected App, enable **Client Credentials Flow**.
-2. Assign a **Run As** user — use a dedicated, API-Only integration user.
-3. Configure the connector with:
+2. Assign a **Run As** user — use a dedicated, API-Only integration user. This is set
+   separately from the app itself: **Setup → Manage Connected Apps → your app → Edit
+   Policies → Client Credentials Flow → Run As**. Until it is set, token requests fail with
+   `invalid_grant: no client credentials user enabled`.
+3. Check the flow before configuring Kafka (a new app can take a few minutes to become
+   usable):
+
+   ```bash
+   curl -s https://YOUR_DOMAIN.my.salesforce.com/services/oauth2/token \
+     -d grant_type=client_credentials -d client_id="$KEY" -d client_secret="$SECRET"
+   ```
+
+   If your org no longer allows new connected apps, create an **External Client App** with
+   the same OAuth settings and client credentials flow.
+4. Configure the connector with:
 
 ```properties
 sf.auth.grant.type=client_credentials

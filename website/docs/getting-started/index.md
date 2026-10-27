@@ -18,6 +18,10 @@ Three steps take you from nothing to Salesforce change events flowing into Kafka
 3. **[Run the quickstart](quickstart.md)** — a docker-compose stack plus a ready-to-POST
    connector config.
 
+Streaming Platform Events? The [Platform Events walkthrough](platform-events-walkthrough.md)
+goes from creating the event in Salesforce to reading it in Kafka, with the records a real
+org produces and how replay, schema changes and restarts work.
+
 ## Requirements
 
 | Requirement | Version |

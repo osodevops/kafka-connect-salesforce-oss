@@ -23,12 +23,23 @@ The source connector keeps one offset per SObject (source partition
 }
 ```
 
-- `replayId` — the Pub/Sub position (opaque bytes, base64), resumed with
+- `replayId` — the Pub/Sub position (opaque bytes, base64; on Salesforce 29 bytes, an 8-byte
+  event position followed by event bus partition bytes), resumed with
   `replay_preset=CUSTOM`.
 - `probeReplayId` — the pre-snapshot probe used for the handoff; kept until the first
   live event is processed.
 - `lastSystemModstamp` — the polling-mode cursor.
 - `commitTimestamp` — the last CDC commit seen; the watermark for gap resync.
+
+Each platform event has its own offset (source partition `{"platformEvent": "<name>"}`)
+holding the same opaque replay ID:
+
+```json
+{"offsetVersion": "1", "replayId": "AAAAAAAYQL0AE04tY29yZTEuc2ZkYy04dGd0dDU="}
+```
+
+The `ReplayId` field in platform event records is the 8-byte position as a decimal
+(`1589437` for the offset above), which is also the number the Streaming API reports.
 
 The legacy CometD source stores `{"replayId": <long>}` per channel.
 
