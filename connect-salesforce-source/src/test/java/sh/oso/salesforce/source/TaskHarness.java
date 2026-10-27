@@ -45,6 +45,16 @@ final class TaskHarness implements AutoCloseable {
         return this;
     }
 
+    TaskHarness without(String key) {
+        props.remove(key);
+        return this;
+    }
+
+    /** The offset Connect would have committed for a source partition, or null. */
+    Map<String, Object> committedOffset(Map<String, ?> partition) {
+        return committedOffsets.get(partition);
+    }
+
     SalesforceSourceTask start() {
         task = new SalesforceSourceTask();
         task.initialize(new SourceTaskContext() {

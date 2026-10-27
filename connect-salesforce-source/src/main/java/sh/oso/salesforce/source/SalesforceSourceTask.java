@@ -25,6 +25,7 @@ public class SalesforceSourceTask extends SourceTask {
     private SourceConfig config;
     private PubSubClient pubsub;
     private final List<SObjectPipeline> pipelines = new ArrayList<>();
+    private FatalPipelineException fatal;
 
     @Override
     public String version() {
@@ -54,11 +55,20 @@ public class SalesforceSourceTask extends SourceTask {
 
     @Override
     public List<SourceRecord> poll() throws InterruptedException {
+        if (fatal != null) {
+            throw fatal;
+        }
         List<SourceRecord> out = new ArrayList<>();
         ConnectException firstFailure = null;
         for (SObjectPipeline pipeline : pipelines) {
             try {
                 out.addAll(pipeline.poll());
+            } catch (FatalPipelineException e) {
+                // Unrecoverable: hand over what the other pipelines produced, then fail the task.
+                LOG.error("Pipeline for {} failed permanently", pipeline.sobject(), e);
+                if (fatal == null) {
+                    fatal = e;
+                }
             } catch (ConnectException e) {
                 // Isolate per-SObject failures: emit what other pipelines produced first.
                 LOG.error("Pipeline for {} failed", pipeline.sobject(), e);
@@ -66,6 +76,9 @@ public class SalesforceSourceTask extends SourceTask {
                     firstFailure = e;
                 }
             }
+        }
+        if (out.isEmpty() && fatal != null) {
+            throw fatal;
         }
         if (out.isEmpty() && firstFailure != null) {
             throw firstFailure;

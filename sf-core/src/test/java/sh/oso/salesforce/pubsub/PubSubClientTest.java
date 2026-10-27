@@ -3,11 +3,13 @@ package sh.oso.salesforce.pubsub;
 import com.google.protobuf.ByteString;
 import com.salesforce.eventbus.protobuf.ProducerEvent;
 import com.salesforce.eventbus.protobuf.PublishResponse;
+import io.grpc.Status;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import sh.oso.salesforce.common.SalesforceException;
 import sh.oso.salesforce.testing.FakePubSubServer;
 import sh.oso.salesforce.testing.MockSalesforceServer;
 import sh.oso.salesforce.testing.TestSchemas;
@@ -15,6 +17,7 @@ import sh.oso.salesforce.testing.TestSchemas;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class PubSubClientTest {
 
@@ -127,5 +130,111 @@ class PubSubClientTest {
         Schema second = client.getSchema(schemaId);
         assertThat(second).isSameAs(first);
         assertThat(first.getName()).isEqualTo("AccountChangeEvent");
+    }
+
+    @Test
+    void corruptedCustomReplaySurfacesTypedException() {
+        try (PubSubSubscription subscription = client.subscribe(
+                SubscribeOptions.custom(TOPIC, new byte[9], 10))) {
+            assertThatThrownBy(() -> subscription.poll(10, 2000))
+                    .isInstanceOfSatisfying(PubSubStreamException.class, e -> {
+                        assertThat(e.isInvalidReplay()).isTrue();
+                        assertThat(e.errorCode()).isEqualTo(FakePubSubServer.INVALID_REPLAY_ERROR);
+                    });
+        }
+    }
+
+    @Test
+    void expiredReplayIsRejected() throws Exception {
+        byte[] first = pubsub.publishEvent(TOPIC, TestSchemas.accountChangeEvent(schema, "CREATE", "001A", 1000, "A"));
+        byte[] second = pubsub.publishEvent(TOPIC, TestSchemas.accountChangeEvent(schema, "CREATE", "001B", 2000, "B"));
+        pubsub.publishEvent(TOPIC, TestSchemas.accountChangeEvent(schema, "CREATE", "001C", 3000, "C"));
+        pubsub.expireEvents(TOPIC, 2);
+
+        // Resuming after the first event needs the (expired) second one.
+        try (PubSubSubscription subscription = client.subscribe(SubscribeOptions.custom(TOPIC, first, 10))) {
+            assertThatThrownBy(() -> subscription.poll(10, 2000))
+                    .isInstanceOfSatisfying(PubSubStreamException.class,
+                            e -> assertThat(e.isInvalidReplay()).isTrue());
+        }
+        // Resuming after the last expired event needs nothing that has expired.
+        try (PubSubSubscription subscription = client.subscribe(SubscribeOptions.custom(TOPIC, second, 10))) {
+            assertThat(subscription.poll(10, 2000)).extracting(e -> e.payload().get("Name").toString())
+                    .containsExactly("C");
+        }
+        try (PubSubSubscription subscription = client.subscribe(SubscribeOptions.earliest(TOPIC, 10))) {
+            assertThat(subscription.poll(10, 2000)).hasSize(1);
+        }
+    }
+
+    @Test
+    void subscribeFailureIsTyped() {
+        pubsub.failNextSubscribe(TOPIC, Status.UNAVAILABLE, null);
+
+        try (PubSubSubscription subscription = client.subscribe(SubscribeOptions.latest(TOPIC, 10))) {
+            assertThatThrownBy(() -> subscription.poll(10, 2000))
+                    .isInstanceOfSatisfying(PubSubStreamException.class, e -> {
+                        assertThat(e.code()).isEqualTo(Status.Code.UNAVAILABLE);
+                        assertThat(e.isRetryable()).isTrue();
+                    });
+        }
+    }
+
+    @Test
+    void midStreamFailureIsTyped() throws Exception {
+        try (PubSubSubscription subscription = client.subscribe(SubscribeOptions.latest(TOPIC, 10))) {
+            assertThat(subscription.awaitEstablished(2000)).isTrue();
+            pubsub.breakSubscriptions(TOPIC, Status.UNAVAILABLE, null);
+
+            assertThatThrownBy(() -> subscription.poll(10, 2000))
+                    .isInstanceOfSatisfying(PubSubStreamException.class,
+                            e -> assertThat(e.isRetryable()).isTrue());
+            assertThat(subscription.isBroken()).isTrue();
+        }
+    }
+
+    @Test
+    void awaitEstablishedFailsFastOnStreamError() {
+        pubsub.failNextSubscribe(TOPIC, Status.NOT_FOUND, null);
+
+        long started = System.currentTimeMillis();
+        try (PubSubSubscription subscription = client.subscribe(SubscribeOptions.latest(TOPIC, 10))) {
+            assertThatThrownBy(() -> subscription.awaitEstablished(10_000))
+                    .isInstanceOfSatisfying(PubSubStreamException.class,
+                            e -> assertThat(e.code()).isEqualTo(Status.Code.NOT_FOUND));
+        }
+        assertThat(System.currentTimeMillis() - started).isLessThan(2000);
+    }
+
+    @Test
+    void eventsAfterDecodeFailureAreNeverReturned() throws Exception {
+        pubsub.publishEvent(TOPIC, TestSchemas.accountChangeEvent(schema, "CREATE", "001A", 1000, "Good"));
+        pubsub.publishRawEvent(TOPIC, new byte[0]);
+
+        try (PubSubSubscription subscription = client.subscribe(SubscribeOptions.earliest(TOPIC, 10))) {
+            List<DecodedEvent> first = subscription.poll(10, 2000);
+            assertThat(first).extracting(e -> e.payload().get("Name").toString()).containsExactly("Good");
+            pubsub.publishEvent(TOPIC, TestSchemas.accountChangeEvent(schema, "CREATE", "001B", 2000, "After"));
+
+            assertThatThrownBy(() -> subscription.poll(10, 2000))
+                    .isInstanceOf(SalesforceException.class)
+                    .isNotInstanceOf(PubSubStreamException.class)
+                    .hasMessageContaining("Avro-decode");
+            assertThatThrownBy(() -> subscription.poll(10, 100)).isInstanceOf(SalesforceException.class);
+        }
+    }
+
+    @Test
+    void subscriptionCarriesItsSessionAndRevokedTokensAreUnauthenticated() throws Exception {
+        try (PubSubSubscription subscription = client.subscribe(SubscribeOptions.latest(TOPIC, 10))) {
+            assertThat(subscription.awaitEstablished(2000)).isTrue();
+            assertThat(subscription.session().accessToken()).isEqualTo(pubsub.lastAccessToken());
+            pubsub.revokeAccessToken(subscription.session().accessToken());
+        }
+        try (PubSubSubscription subscription = client.subscribe(SubscribeOptions.latest(TOPIC, 10))) {
+            assertThatThrownBy(() -> subscription.poll(10, 2000))
+                    .isInstanceOfSatisfying(PubSubStreamException.class,
+                            e -> assertThat(e.isUnauthenticated()).isTrue());
+        }
     }
 }

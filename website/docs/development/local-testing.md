@@ -7,7 +7,9 @@ sidebar_position: 2
 # Local Testing
 
 There is no "LocalStack for Salesforce", so this project ships its own **fake
-Salesforce**, exported from `sf-core`'s test-jar (`sh.oso.salesforce.testing`). Every
+Salesforce**: `MockSalesforceServer` and `FakePubSubServer` are exported from `sf-core`'s
+test-jar (`sh.oso.salesforce.testing`), and the CometD stub lives in the streaming source
+module's tests. Every
 connector behaviour — including the snapshot handoff, gap recovery, and replay resume —
 is verified against it in CI, with no Salesforce org and no secrets.
 
@@ -16,7 +18,7 @@ is verified against it in CI, with no Salesforce org and no secrets.
 | Component | Simulates | How |
 |---|---|---|
 | `MockSalesforceServer` | OAuth token endpoint, REST (query/describe/limits/composite), the full Bulk API 2.0 job lifecycle | WireMock + a stateful job-store transformer. The token response's `instance_url` points back at the mock, so an authenticated client routes all traffic to it |
-| `FakePubSubServer` | The Pub/Sub API (`eventbus.v1.PubSub`) | grpc-java service with in-memory topics, real Avro encoding, monotonic replayIds, `LATEST`/`EARLIEST`/`CUSTOM` replay semantics, `num_requested` flow control, and fault injection (auth errors, corrupted replayIds, per-event publish failures) |
+| `FakePubSubServer` | The Pub/Sub API (`eventbus.v1.PubSub`) | grpc-java service with in-memory topics, real Avro encoding, monotonic replayIds, `LATEST`/`EARLIEST`/`CUSTOM` replay semantics, `num_requested` flow control, and fault injection (subscribe and mid-stream failures, retention expiry, token revocation, schema evolution, undecodable payloads, per-event publish failures) |
 | `BayeuxStubServer` | The legacy Streaming API's CometD endpoint | Protocol-level stub of handshake/connect/subscribe with the Salesforce replay extension, retained-event buffer, and invalid-replayId rejection |
 
 Every connector exposes endpoint overrides that make this possible (and double as proxy
@@ -59,6 +61,13 @@ Fault injection:
 
 ```java
 pubsub.failNextSubscribe(Status.UNAUTHENTICATED, "sfdc...subscription.auth.error");
+pubsub.failNextSubscribe(topic, Status.UNAVAILABLE, null);  // next subscribe on one topic
+pubsub.breakSubscriptions(topic, Status.UNAVAILABLE, null); // fail live streams mid-flight
+pubsub.expireEvents(topic, 2);                              // first 2 events past retention
+pubsub.revokeAccessToken(pubsub.lastAccessToken());         // expired session
+sf.rotateToken();                                           // next OAuth call issues a new token
+pubsub.updateTopicSchema(topic, evolvedSchema);             // field added mid-stream
+pubsub.publishRawEvent(topic, new byte[0]);                 // undecodable payload
 pubsub.setPublishFailer(e -> "LIMIT_EXCEEDED");             // per-event publish errors
 sf.bulk().setIngestRowFailer(row ->                          // per-row Bulk failures
     row.contains("Bad") ? "REQUIRED_FIELD_MISSING" : null);

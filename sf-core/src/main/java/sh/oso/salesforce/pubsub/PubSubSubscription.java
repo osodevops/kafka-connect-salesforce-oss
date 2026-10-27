@@ -6,6 +6,8 @@ import com.salesforce.eventbus.protobuf.FetchRequest;
 import com.salesforce.eventbus.protobuf.FetchResponse;
 import com.salesforce.eventbus.protobuf.PubSubGrpc;
 import com.salesforce.eventbus.protobuf.ReplayPreset;
+import io.grpc.Metadata;
+import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumReader;
@@ -14,6 +16,7 @@ import org.apache.avro.io.BinaryDecoder;
 import org.apache.avro.io.DecoderFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import sh.oso.salesforce.auth.Session;
 import sh.oso.salesforce.common.SalesforceException;
 
 import java.io.IOException;
@@ -31,13 +34,16 @@ import java.util.function.Function;
  *
  * <p>Decoded events are buffered internally; callers drain them with {@link #poll}.
  * The subscription tops up {@code num_requested} whenever outstanding demand drops below
- * half the configured batch size. Stream errors surface on the next {@code poll} call.</p>
+ * half the configured batch size. Stream errors surface from {@link #poll} once the events
+ * buffered before the failure have been drained, as {@link PubSubStreamException} for gRPC
+ * failures; nothing received after a failure is ever returned.</p>
  */
 public final class PubSubSubscription implements AutoCloseable {
 
     private static final Logger LOG = LoggerFactory.getLogger(PubSubSubscription.class);
 
     private final SubscribeOptions options;
+    private final Session session;
     private final Function<String, Schema> schemaProvider;
     private final BlockingQueue<DecodedEvent> buffer = new LinkedBlockingQueue<>();
     private final AtomicInteger outstanding = new AtomicInteger();
@@ -45,12 +51,14 @@ public final class PubSubSubscription implements AutoCloseable {
     private final AtomicReference<byte[]> latestReplayId = new AtomicReference<>();
     private volatile boolean completed;
     private volatile boolean closed;
+    private volatile boolean established;
     private final java.util.concurrent.CountDownLatch firstResponse = new java.util.concurrent.CountDownLatch(1);
     private final StreamObserver<FetchRequest> requestObserver;
 
     PubSubSubscription(PubSubGrpc.PubSubStub stub, Function<String, Schema> schemaProvider,
-                       SubscribeOptions options) {
+                       SubscribeOptions options, Session session) {
         this.options = options;
+        this.session = session;
         this.schemaProvider = schemaProvider;
         this.requestObserver = stub.subscribe(new StreamObserver<>() {
             @Override
@@ -60,14 +68,19 @@ public final class PubSubSubscription implements AutoCloseable {
 
             @Override
             public void onError(Throwable t) {
-                LOG.warn("Pub/Sub subscribe stream error on {}: {}", options.topicName(), t.getMessage());
-                streamError.set(t);
+                if (!closed) {
+                    LOG.warn("Pub/Sub subscribe stream error on {}: {} [{}]", options.topicName(),
+                            Status.fromThrowable(t).getCode(), describe(t));
+                }
+                streamError.compareAndSet(null, t);
+                firstResponse.countDown();
             }
 
             @Override
             public void onCompleted() {
                 LOG.info("Pub/Sub subscribe stream completed on {}", options.topicName());
                 completed = true;
+                firstResponse.countDown();
             }
         });
         sendInitialFetch();
@@ -86,16 +99,22 @@ public final class PubSubSubscription implements AutoCloseable {
     }
 
     private void handleResponse(FetchResponse response) {
+        // Once the stream has failed nothing more may be buffered: delivering events from after
+        // a failed one would move the caller's offset past it and lose it.
+        if (closed || streamError.get() != null) {
+            return;
+        }
         if (!response.getLatestReplayId().isEmpty()) {
             latestReplayId.set(response.getLatestReplayId().toByteArray());
         }
+        established = true;
         firstResponse.countDown();
         for (ConsumerEvent event : response.getEventsList()) {
             outstanding.decrementAndGet();
             try {
                 buffer.add(decode(event));
             } catch (RuntimeException e) {
-                streamError.set(e);
+                streamError.compareAndSet(null, e);
                 return;
             }
         }
@@ -122,7 +141,7 @@ public final class PubSubSubscription implements AutoCloseable {
     }
 
     private void maybeRequestMore() {
-        if (closed || completed) {
+        if (closed || completed || streamError.get() != null) {
             return;
         }
         int current = outstanding.get();
@@ -141,38 +160,73 @@ public final class PubSubSubscription implements AutoCloseable {
 
     /**
      * Drains up to {@code maxEvents} decoded events, waiting up to the timeout for the first one.
-     * Throws when the underlying stream has failed.
+     * Events buffered before a stream failure are returned first; the failure is thrown once
+     * there is nothing left to drain.
      */
     public List<DecodedEvent> poll(int maxEvents, long timeoutMillis) throws InterruptedException {
-        throwIfFailed();
         List<DecodedEvent> out = new ArrayList<>();
-        DecodedEvent first = buffer.poll(timeoutMillis, TimeUnit.MILLISECONDS);
+        DecodedEvent first = streamError.get() != null
+                ? buffer.poll()
+                : buffer.poll(timeoutMillis, TimeUnit.MILLISECONDS);
         if (first != null) {
             out.add(first);
             buffer.drainTo(out, maxEvents - 1);
         }
-        throwIfFailed();
+        if (out.isEmpty()) {
+            throwIfFailed();
+        }
         maybeRequestMore();
         return out;
     }
 
     private void throwIfFailed() {
         Throwable t = streamError.get();
-        if (t != null && buffer.isEmpty()) {
-            if (t instanceof RuntimeException re) {
-                throw re;
-            }
-            throw new SalesforceException("Pub/Sub subscribe stream failed: " + t.getMessage(), t, true);
+        if (t == null) {
+            return;
         }
+        if (t instanceof SalesforceException se) {
+            throw se;
+        }
+        if (PubSubStreamException.hasGrpcStatus(t)) {
+            throw PubSubStreamException.from(t, options.topicName());
+        }
+        throw new SalesforceException("Pub/Sub stream on " + options.topicName() + " failed: " + t, t, false);
+    }
+
+    private static String describe(Throwable t) {
+        Metadata trailers = Status.trailersFromThrowable(t);
+        String errorCode = trailers == null ? null : trailers.get(PubSubStreamException.ERROR_CODE_TRAILER);
+        return errorCode != null ? errorCode : String.valueOf(t.getMessage());
     }
 
     /**
      * Waits until the server has acknowledged the subscription with a first response
      * (Salesforce sends keepalive FetchResponses carrying the latest replayId).
-     * Needed for the snapshot-handoff LATEST probe.
+     * Needed for LATEST probes. Returns false on timeout; throws as soon as the stream fails
+     * without having been established.
      */
     public boolean awaitEstablished(long timeoutMillis) throws InterruptedException {
-        return firstResponse.await(timeoutMillis, TimeUnit.MILLISECONDS);
+        firstResponse.await(timeoutMillis, TimeUnit.MILLISECONDS);
+        if (established) {
+            return true;
+        }
+        throwIfFailed();
+        return false;
+    }
+
+    /** True once the server has acknowledged the subscription. */
+    public boolean isEstablished() {
+        return established;
+    }
+
+    /** The session whose token opened this stream (to invalidate it if the token is rejected). */
+    public Session session() {
+        return session;
+    }
+
+    /** The replay preset this stream was opened with. */
+    public ReplayPreset replayPreset() {
+        return options.replayPreset();
     }
 
     /** True when the server ended the stream or an error was recorded. */
