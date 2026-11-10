@@ -49,6 +49,15 @@ class SalesforceSourceConnectorTest {
     }
 
     @Test
+    void rejectsCustomObjectListedUnderBothNames() {
+        Map<String, String> props = baseProps();
+        props.put(SourceConfig.SOBJECTS, "My_Object__,My_Object__c");
+        assertThatThrownBy(() -> new SalesforceSourceConnector().start(props))
+                .isInstanceOf(ConfigException.class)
+                .hasMessageContaining("Same SObject as My_Object__");
+    }
+
+    @Test
     void rejectsLoginHostForClientCredentials() {
         Map<String, String> props = baseProps();
         props.put(SourceConfig.SOBJECTS, "Account");

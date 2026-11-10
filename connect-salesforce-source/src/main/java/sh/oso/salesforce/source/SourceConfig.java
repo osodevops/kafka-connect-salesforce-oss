@@ -9,6 +9,7 @@ import org.apache.kafka.common.config.types.Password;
 import sh.oso.salesforce.auth.AuthConfig;
 import sh.oso.salesforce.pubsub.PlatformEvents;
 
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -89,7 +90,10 @@ public class SourceConfig extends AbstractConfig {
                 .define(API_VERSION, Type.STRING, "60.0", Importance.MEDIUM, "Salesforce API version.")
                 .define(SOBJECTS, Type.LIST, "", Importance.HIGH,
                         "SObject API names to source (exact casing). Required unless "
-                                + PLATFORM_EVENTS + " is set.")
+                                + PLATFORM_EVENTS + " is set. Custom objects may be listed by API name "
+                                + "(My_Object__c) or change event entity name (My_Object__); either way the "
+                                + "connector subscribes to /data/My_Object__ChangeEvent and queries My_Object__c. "
+                                + "The value as written names the Kafka topic and offset.")
                 .define(PLATFORM_EVENTS, Type.LIST, "", Importance.HIGH,
                         "Platform event API names to stream over the Pub/Sub API (each ending in __e), "
                                 + "one subscription per event. Each record carries every field of the event; "
@@ -167,6 +171,7 @@ public class SourceConfig extends AbstractConfig {
             }
         }
         rejectDuplicates(SOBJECTS, sobjects);
+        rejectSameApiName(sobjects);
         rejectDuplicates(PLATFORM_EVENTS, events);
         authConfig(); // validates flow-specific requirements
     }
@@ -176,6 +181,18 @@ public class SourceConfig extends AbstractConfig {
         for (String name : names) {
             if (!seen.add(name)) {
                 throw new ConfigException(key, name, "Listed more than once");
+            }
+        }
+    }
+
+    /** My_Object__ and My_Object__c are the same object; listing both would duplicate its stream. */
+    private static void rejectSameApiName(List<String> sobjects) {
+        Map<String, String> byApiName = new HashMap<>();
+        for (String sobject : sobjects) {
+            String previous = byApiName.putIfAbsent(SObjectNames.apiName(sobject), sobject);
+            if (previous != null && !previous.equals(sobject)) {
+                throw new ConfigException(SOBJECTS, sobject,
+                        "Same SObject as " + previous + "; list it once");
             }
         }
     }
