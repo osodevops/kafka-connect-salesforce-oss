@@ -35,7 +35,8 @@ final class SObjectPipeline implements SourcePipeline {
             DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'").withZone(java.time.ZoneOffset.UTC);
 
     private final SourceConfig config;
-    private final String sobject;
+    private final String sobject;          // as configured: names the Kafka topic and offset partition
+    private final String apiName;          // REST and SOQL name (My_Object__c)
     private final String cdcTopicName;
     private final RestClient rest;
     private final BulkQueryClient bulkQuery;
@@ -60,13 +61,14 @@ final class SObjectPipeline implements SourcePipeline {
                     PubSubClient pubsub, RateGovernor governor, Map<String, Object> storedOffset) {
         this.config = config;
         this.sobject = sobject;
-        this.cdcTopicName = "/data/" + sobject + "ChangeEvent";
+        this.apiName = SObjectNames.apiName(sobject);
+        this.cdcTopicName = SObjectNames.cdcChannel(sobject);
         this.rest = rest;
         this.bulkQuery = bulkQuery;
         this.governor = governor;
         this.stream = pubsub == null ? null : new ResilientSubscription(pubsub, cdcTopicName,
                 "CDC stream for " + sobject,
-                "Enable Change Data Capture for " + sobject + " (Setup > Change Data Capture)",
+                "Enable Change Data Capture for " + apiName + " (Setup > Change Data Capture)",
                 config.getInt(SourceConfig.PUBSUB_BATCH_SIZE));
         this.records = new SourceRecordFactory(sobject, config.topicFor(sobject));
         this.offset = SObjectOffset.fromMap(storedOffset);
@@ -135,7 +137,7 @@ final class SObjectPipeline implements SourcePipeline {
         }
         governor.acquire(RateGovernor.DAILY_BULK_V2_QUERY_JOBS);
         String since = config.getString(SourceConfig.SNAPSHOT_SINCE);
-        String soql = SoqlBuilder.snapshotQuery(sobject, describe(), since);
+        String soql = SoqlBuilder.snapshotQuery(apiName, describe(), since);
         BulkQueryClient.validateSoql(soql);
         pendingCursor = SOQL_DATETIME.format(Instant.now());
         snapshotJobId = bulkQuery.createJob(soql, false);
@@ -216,7 +218,7 @@ final class SObjectPipeline implements SourcePipeline {
             return event;
         }
         governor.acquire(RateGovernor.DAILY_API_REQUESTS);
-        return rest.retrieve(sobject, recordIds.get(0).toString(), null)
+        return rest.retrieve(apiName, recordIds.get(0).toString(), null)
                 .map(json -> mergePostImage(event, json))
                 .orElse(event);
     }
@@ -273,7 +275,7 @@ final class SObjectPipeline implements SourcePipeline {
         for (Object idObj : recordIds) {
             String recordId = idObj.toString();
             governor.acquire(RateGovernor.DAILY_API_REQUESTS);
-            rest.retrieve(sobject, recordId, null).ifPresentOrElse(json -> {
+            rest.retrieve(apiName, recordId, null).ifPresentOrElse(json -> {
                 Map<String, String> row = new java.util.LinkedHashMap<>();
                 json.fields().forEachRemaining(e -> {
                     if (!e.getValue().isContainerNode() && !e.getValue().isNull()) {
@@ -294,7 +296,7 @@ final class SObjectPipeline implements SourcePipeline {
         String from = SOQL_DATETIME.format(Instant.ofEpochMilli(
                 Math.max(0, watermark - config.getLong(SourceConfig.GAP_RESYNC_BUFFER_MS))));
         governor.acquire(RateGovernor.DAILY_BULK_V2_QUERY_JOBS);
-        String jobId = bulkQuery.createJob(SoqlBuilder.resyncQuery(sobject, describe(), from), false);
+        String jobId = bulkQuery.createJob(SoqlBuilder.resyncQuery(apiName, describe(), from), false);
         LOG.info("Gap resync for {} from {} (job {})", sobject, from, jobId);
         String locator = null;
         while (true) {
@@ -376,7 +378,7 @@ final class SObjectPipeline implements SourcePipeline {
             }
             lastPollStartedAt = System.currentTimeMillis();
             governor.acquire(RateGovernor.DAILY_BULK_V2_QUERY_JOBS);
-            String soql = SoqlBuilder.pollingQuery(sobject, describe(), offset.lastSystemModstamp());
+            String soql = SoqlBuilder.pollingQuery(apiName, describe(), offset.lastSystemModstamp());
             BulkQueryClient.validateSoql(soql);
             pendingCursor = SOQL_DATETIME.format(Instant.now());
             activePollJobId = bulkQuery.createJob(soql, config.getBoolean(SourceConfig.INCLUDE_DELETED));
@@ -427,7 +429,7 @@ final class SObjectPipeline implements SourcePipeline {
 
     private JsonNode describe() {
         governor.acquire(RateGovernor.DAILY_API_REQUESTS);
-        return rest.describe(sobject);
+        return rest.describe(apiName);
     }
 
     private Schema describeSchema() {
