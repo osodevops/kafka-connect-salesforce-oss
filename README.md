@@ -15,6 +15,9 @@
   <a href="https://github.com/osodevops/kafka-connect-salesforce-oss/releases">
     <img src="https://img.shields.io/github/v/release/osodevops/kafka-connect-salesforce-oss" alt="Release">
   </a>
+  <a href="https://github.com/sponsors/osodevops">
+    <img src="https://img.shields.io/badge/Sponsor-EA4AAA?logo=githubsponsors&logoColor=white" alt="Sponsor on GitHub">
+  </a>
 </p>
 
 ---
@@ -22,6 +25,12 @@
 **kafka-connect-salesforce** is a production-grade, Apache-2.0 suite of Salesforce connectors for Kafka Connect — the **open-source alternative to Confluent's proprietary Salesforce connectors**. Four connectors deliver functional parity with Confluent's eleven, built clean-room on Salesforce's modern **Pub/Sub API (gRPC)** and **Bulk API 2.0**.
 
 > **Running it in production?** OSO, who build and maintain the connectors, offer an [Enterprise support subscription](https://salesforcekafkaconnector.com/enterprise-support): maintained releases and security patches, Salesforce seasonal release readiness, a 60-minute P1 response from the engineers who write the code, and an onboarding review. What it covers is on the [Enterprise Support page](https://salesforcekafkaconnector.com/enterprise-support) and in [SUPPORT.md](SUPPORT.md).
+
+## Sponsorship
+
+kafka-connect-salesforce is free and open source. If your company relies on it, please consider [sponsoring it through GitHub Sponsors](https://github.com/sponsors/osodevops). Sponsorship pays for testing against each Salesforce seasonal release and new Kafka Connect versions, release engineering, security fixes and documentation.
+
+Need production support with response targets? See the [Enterprise support subscription](https://salesforcekafkaconnector.com/enterprise-support).
 
 ## Features
 
