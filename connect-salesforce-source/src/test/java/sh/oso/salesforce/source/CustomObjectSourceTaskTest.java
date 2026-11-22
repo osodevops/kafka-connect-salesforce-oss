@@ -116,4 +116,45 @@ class CustomObjectSourceTaskTest {
         publish("UPDATE", "a00C", 7000, "C");
         assertThat(harness.pollUntil(1, 10_000)).extracting(SourceRecord::key).containsExactly("a00C");
     }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"My_Object__", "My_Object__c"})
+    void snapshotQueriesApiNameThenHandsOffToTheChangeEventChannel(String configured) throws Exception {
+        sf.enqueueBulkQueryResultPages(List.of("\"Id\",\"Name\"\n\"a00S\",\"Snapshot\"\n"));
+        harness.with(SourceConfig.SOBJECTS, configured).with(SourceConfig.SNAPSHOT_ENABLED, "true");
+        harness.start();
+
+        List<SourceRecord> snapshot = harness.pollUntil(1, 10_000);
+
+        assertThat(snapshot).extracting(SourceRecord::key).containsExactly("a00S");
+        assertThat(snapshot.get(0).topic()).isEqualTo("salesforce." + configured);
+        assertThat(((Struct) snapshot.get(0).value()).getString("_ObjectType")).isEqualTo(configured);
+        assertThat(sf.bulk().allQueryJobs()).hasSize(1);
+        assertThat(sf.bulk().allQueryJobs().get(0).soql).endsWith(" FROM " + API_NAME);
+
+        // The handoff subscribes to the change event channel and delivers later changes.
+        long afterSnapshot = System.currentTimeMillis() + 60_000;
+        harness.poll();
+        publish("UPDATE", "a00T", afterSnapshot, "Streamed");
+        assertThat(harness.pollUntil(1, 10_000)).extracting(SourceRecord::key).containsExactly("a00T");
+        assertThat(pubsub.activeSubscribers(CHANNEL)).isEqualTo(1);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"My_Object__", "My_Object__c"})
+    void pollingModeDescribesAndQueriesApiName(String configured) throws Exception {
+        sf.enqueueBulkQueryResultPages(List.of(
+                "\"Id\",\"Name\",\"CreatedDate\",\"SystemModstamp\"\n"
+                        + "\"a00P\",\"Polled\",\"2024-02-01T10:00:00.000+0000\",\"2024-02-01T10:00:00.000+0000\"\n"));
+        harness.with(SourceConfig.SOBJECTS, configured).with(SourceConfig.REALTIME_MODE, "polling");
+        harness.start();
+
+        List<SourceRecord> polled = harness.pollUntil(1, 5000);
+
+        assertThat(polled).extracting(SourceRecord::key).containsExactly("a00P");
+        assertThat(polled.get(0).topic()).isEqualTo("salesforce." + configured);
+        assertThat(polled.get(0).sourcePartition()).isEqualTo(Map.of("sobject", configured));
+        assertThat(sf.bulk().allQueryJobs().get(0).soql).endsWith(" FROM " + API_NAME);
+        assertThat(pubsub.activeSubscribers(CHANNEL)).isZero();
+    }
 }
