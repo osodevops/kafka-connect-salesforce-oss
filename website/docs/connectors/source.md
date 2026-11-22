@@ -24,6 +24,18 @@ does not affect the others. The same connector can also stream
 events are distributed round-robin across tasks; `tasks.max` above their combined count is
 capped.
 
+### Custom objects
+
+List a custom object in `sf.sobjects` by its API name, for example `My_Object__c`. The
+connector derives the two names Salesforce uses for it: the CDC channel drops the trailing
+`c` (`/data/My_Object__ChangeEvent`), while describe, record retrieval and every Bulk query
+use the API name (`My_Object__c`). The change event entity name (`My_Object__`) is also
+accepted and resolves to the same channel and API name, so existing configurations keep
+working. The value exactly as written names the Kafka topic (`{sf.topic.prefix}.My_Object__c`
+or `{sf.topic.prefix}.My_Object__`) and the stored offset, so changing the spelling later
+starts a new topic and offset. List each object only once: `My_Object__` and `My_Object__c`
+together are rejected.
+
 ## Record shape
 
 - **Key**: the Salesforce record Id (string).
@@ -210,7 +222,7 @@ Every property with types, defaults, and valid values — generated from the con
 
 | Property | Type | Default | Description |
 |---|---|---|---|
-| `sf.sobjects` | list | — | SObject API names to source (exact casing); required unless `sf.platform.events` is set |
+| `sf.sobjects` | list | — | SObject API names to source (exact casing); required unless `sf.platform.events` is set. See [Custom objects](#custom-objects) |
 | `sf.platform.events` | list | — | Platform event API names to stream (each ending in `__e`); see [Platform Events](#platform-events) |
 | `sf.sobjects.max` | int | `5` | Maximum SObjects per connector instance |
 | `sf.topic.prefix` | string | — | Topics are `{prefix}.{SObject}` and `{prefix}.{EventName}` |

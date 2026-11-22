@@ -57,7 +57,7 @@ Connected app consumer secret.
 
 ### `sf.sobjects`
 
-SObject API names to source (exact casing). Required unless sf.platform.events is set.
+SObject API names to source (exact casing). Required unless sf.platform.events is set. Custom objects may be listed by API name (My_Object__c) or change event entity name (My_Object__); either way the connector subscribes to /data/My_Object__ChangeEvent and queries My_Object__c. The value as written names the Kafka topic and offset.
 
 - **Type:** list
 - **Default:** "" (empty)

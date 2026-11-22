@@ -49,6 +49,31 @@ class SalesforceSourceConnectorTest {
     }
 
     @Test
+    void rejectsCustomObjectListedUnderBothNames() {
+        Map<String, String> props = baseProps();
+        props.put(SourceConfig.SOBJECTS, "My_Object__,My_Object__c");
+        assertThatThrownBy(() -> new SalesforceSourceConnector().start(props))
+                .isInstanceOf(ConfigException.class)
+                .hasMessageContaining("Same SObject as My_Object__");
+    }
+
+    @Test
+    void rejectsCustomObjectListedUnderBothNamesInEitherOrder() {
+        Map<String, String> props = baseProps();
+        props.put(SourceConfig.SOBJECTS, "Account,My_Object__c,My_Object__");
+        assertThatThrownBy(() -> new SalesforceSourceConnector().start(props))
+                .isInstanceOf(ConfigException.class)
+                .hasMessageContaining("Same SObject as My_Object__c");
+    }
+
+    @Test
+    void acceptsDistinctCustomObjectsInMixedSpellings() {
+        Map<String, String> props = baseProps();
+        props.put(SourceConfig.SOBJECTS, "Account,My_Object__c,Other_Object__,ns__My_Object__c");
+        new SalesforceSourceConnector().start(props);
+    }
+
+    @Test
     void rejectsLoginHostForClientCredentials() {
         Map<String, String> props = baseProps();
         props.put(SourceConfig.SOBJECTS, "Account");
