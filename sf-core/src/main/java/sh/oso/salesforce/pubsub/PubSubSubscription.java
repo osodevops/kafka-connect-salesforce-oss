@@ -49,6 +49,8 @@ public final class PubSubSubscription implements AutoCloseable {
     private final AtomicInteger outstanding = new AtomicInteger();
     private final AtomicReference<Throwable> streamError = new AtomicReference<>();
     private final AtomicReference<byte[]> latestReplayId = new AtomicReference<>();
+    /** Position from the newest keepalive; cleared as soon as an event arrives after it. */
+    private final AtomicReference<byte[]> keepaliveReplayId = new AtomicReference<>();
     private volatile boolean completed;
     private volatile boolean closed;
     private volatile boolean established;
@@ -106,6 +108,15 @@ public final class PubSubSubscription implements AutoCloseable {
         }
         if (!response.getLatestReplayId().isEmpty()) {
             latestReplayId.set(response.getLatestReplayId().toByteArray());
+        }
+        if (response.getEventsCount() > 0) {
+            // Cleared before the events are buffered, so idleReplayId() can never pair an
+            // older keepalive with a buffer that looks empty.
+            keepaliveReplayId.set(null);
+        } else if (!response.getLatestReplayId().isEmpty() && response.getPendingNumRequested() > 0) {
+            // A keepalive: Salesforce sends one only while it still owes us events
+            // (pending_num_requested > 0) and has none left to deliver.
+            keepaliveReplayId.set(response.getLatestReplayId().toByteArray());
         }
         established = true;
         firstResponse.countDown();
@@ -237,6 +248,24 @@ public final class PubSubSubscription implements AutoCloseable {
     /** Latest replayId reported by the server (for LATEST-probe during snapshot handoff). */
     public byte[] latestReplayId() {
         return latestReplayId.get();
+    }
+
+    /**
+     * The position Salesforce reported in its newest keepalive (an empty FetchResponse), or null
+     * unless that keepalive is the last thing received and every event before it has been
+     * drained with {@link #poll}. Salesforce sends a keepalive only when it has nothing left to
+     * deliver, so resuming from this position skips no event; it is the position to store for
+     * an idle subscription, whose last event's replay ID would otherwise age out of retention.
+     * Call from the thread that polls.
+     */
+    public byte[] idleReplayId() {
+        // Read the keepalive before checking the buffer: an event arriving in between leaves a
+        // position older than that event, which is still safe to resume from.
+        byte[] keepalive = keepaliveReplayId.get();
+        if (keepalive == null || !buffer.isEmpty() || streamError.get() != null) {
+            return null;
+        }
+        return keepalive;
     }
 
     @Override

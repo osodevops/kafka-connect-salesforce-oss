@@ -255,8 +255,49 @@ public final class FakePubSubServer implements AutoCloseable {
     public byte[] latestReplayId(String topicName) {
         TopicState topic = requireTopic(topicName);
         synchronized (topic) {
-            return topic.events.isEmpty() ? replayIdAt(0)
-                    : topic.events.get(topic.events.size() - 1).replayId;
+            return latest(topic);
+        }
+    }
+
+    /** The topic's newest position: its last event, or later bus activity. Caller holds the lock. */
+    private static byte[] latest(TopicState topic) {
+        byte[] lastEvent = topic.events.isEmpty() ? replayIdAt(0)
+                : topic.events.get(topic.events.size() - 1).replayId;
+        return topic.busPosition != null && position(topic.busPosition).compareTo(position(lastEvent)) > 0
+                ? topic.busPosition : lastEvent;
+    }
+
+    /**
+     * Moves the topic's position forward without publishing an event to it, as activity
+     * elsewhere on the shared event bus does (other entities, other orgs). Subscribers learn
+     * the new position only from a keepalive. Returns the new position.
+     */
+    public byte[] advanceReplayPosition(String topicName) {
+        TopicState topic = requireTopic(topicName);
+        byte[] position = nextReplayId();
+        synchronized (topic) {
+            topic.busPosition = position;
+        }
+        return position;
+    }
+
+    /**
+     * Sends a keepalive (an empty FetchResponse carrying the latest position) to every live
+     * subscriber that has received all of the topic's events, as Salesforce does within about
+     * 270 s on an idle subscription.
+     */
+    public void sendKeepalive(String topicName) {
+        requireTopic(topicName).subscribers.forEach(Subscriber::keepalive);
+    }
+
+    /**
+     * Simulates retention expiry by position: a CUSTOM replayId older than {@code replayId} is
+     * rejected like one past retention, whether or not it belonged to an event on this topic.
+     */
+    public void expirePositionsBefore(String topicName, byte[] replayId) {
+        TopicState topic = requireTopic(topicName);
+        synchronized (topic) {
+            topic.retainedFrom = position(replayId);
         }
     }
 
@@ -325,6 +366,8 @@ public final class FakePubSubServer implements AutoCloseable {
         volatile String schemaId;
         volatile Schema schema;
         int expired; // events lost to (simulated) retention, guarded by this
+        byte[] busPosition; // position reached by activity never delivered here, guarded by this
+        java.math.BigInteger retainedFrom; // positions before this have expired, guarded by this
         final List<StoredEvent> events = new ArrayList<>();
         final List<ProducerEvent> rpcPublished = new CopyOnWriteArrayList<>();
         final List<Subscriber> subscribers = new CopyOnWriteArrayList<>();
@@ -370,16 +413,29 @@ public final class FakePubSubServer implements AutoCloseable {
 
         /** Sends a keepalive carrying the latest replayId unless the stream has already answered. */
         synchronized void keepaliveIfSilent() {
-            if (failed || responded) {
+            if (!responded) {
+                keepalive();
+            }
+        }
+
+        /**
+         * Sends an empty FetchResponse carrying the latest position. Like Salesforce, only when
+         * there is nothing left to deliver: a keepalive's position is always safe to resume from.
+         */
+        synchronized void keepalive() {
+            if (failed) {
                 return;
             }
             byte[] latest;
             synchronized (topic) {
-                latest = topic.events.isEmpty() ? replayIdAt(0)
-                        : topic.events.get(topic.events.size() - 1).replayId;
+                if (cursor < topic.events.size()) {
+                    return;
+                }
+                latest = latest(topic);
             }
             responded = true;
-            out.onNext(FetchResponse.newBuilder().setLatestReplayId(ByteString.copyFrom(latest)).build());
+            out.onNext(FetchResponse.newBuilder().setLatestReplayId(ByteString.copyFrom(latest))
+                    .setPendingNumRequested(demand).build());
         }
 
         synchronized void fail(Failure failure) {
@@ -401,8 +457,7 @@ public final class FakePubSubServer implements AutoCloseable {
                     cursor++;
                     demand--;
                 }
-                latest = topic.events.isEmpty() ? replayIdAt(0)
-                        : topic.events.get(topic.events.size() - 1).replayId;
+                latest = latest(topic);
             }
             if (batch.isEmpty()) {
                 return;
@@ -547,6 +602,8 @@ public final class FakePubSubServer implements AutoCloseable {
                         }
                         subscriber = new Subscriber(topic, responseObserver, start);
                         topic.subscribers.add(subscriber);
+                        // Retained events first: a keepalive is only for a stream with nothing to deliver.
+                        subscriber.addDemand(request.getNumRequested());
                         // Keepalive acknowledging the subscription: an empty FetchResponse
                         // carrying the latest replayId, immediately or after the configured delay.
                         long delay = firstKeepaliveDelayMillis;
@@ -557,6 +614,7 @@ public final class FakePubSubServer implements AutoCloseable {
                             keepalives.schedule(pending::keepaliveIfSilent, delay,
                                     java.util.concurrent.TimeUnit.MILLISECONDS);
                         }
+                        return;
                     }
                     subscriber.addDemand(request.getNumRequested());
                 }
@@ -597,6 +655,9 @@ public final class FakePubSubServer implements AutoCloseable {
                     // Positional semantics like the real service: resume strictly after the
                     // given position. Keepalive replayIds (not tied to an event) are valid.
                     java.math.BigInteger position = position(wanted);
+                    if (topic.retainedFrom != null && position.compareTo(topic.retainedFrom) < 0) {
+                        return -1;
+                    }
                     int start = topic.events.size();
                     for (int i = 0; i < topic.events.size(); i++) {
                         java.math.BigInteger eventPosition = position(topic.events.get(i).replayId);

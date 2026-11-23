@@ -181,6 +181,15 @@ Total time budget for retrying transient Salesforce failures.
 - **Default:** `30000`
 - **Importance:** medium
 
+### `sf.heartbeat.interval.ms`
+
+How often, in milliseconds, to write a heartbeat record that stores the newest replay position of an idle CDC or platform event stream, so a restart resumes from it. Salesforce moves the position on while a quiet object receives nothing, and the position of its last event expires after 72 hours. 0 (the default) writes no heartbeat records; the task still follows the position in memory when it reconnects.
+
+- **Type:** long
+- **Default:** `0`
+- **Valid values:** [0,...]
+- **Importance:** medium
+
 ## Low importance
 
 ### `sf.password`
@@ -288,4 +297,12 @@ OAuth token endpoint override (testing only).
 
 - **Type:** string
 - **Default:** null
+- **Importance:** low
+
+### `sf.heartbeat.topic`
+
+Kafka topic for heartbeat records. Default: &#123;prefix&#125;.heartbeat.
+
+- **Type:** string
+- **Default:** "" (empty)
 - **Importance:** low

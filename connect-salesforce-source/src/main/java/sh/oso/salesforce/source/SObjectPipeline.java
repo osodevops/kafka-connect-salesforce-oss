@@ -19,7 +19,9 @@ import sh.oso.salesforce.schema.DescribeToConnect;
 
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.List;
 import java.util.Map;
 
@@ -44,6 +46,10 @@ final class SObjectPipeline implements SourcePipeline {
     private final SourceRecordFactory records;
     private final SObjectOffset offset;
     private final ResilientSubscription stream; // null in polling mode
+    private final Heartbeat heartbeat;
+    /** Events taken from the stream and not yet emitted; one that fails is retried from here. */
+    private final Deque<DecodedEvent> pendingEvents = new ArrayDeque<>();
+    private byte[] recoveryProbe;          // position recorded for a resync that has yet to finish
 
     private boolean recoveryPending;       // replay position lost; apply sf.gap.recovery
     private PubSubStreamException lostReplay;
@@ -72,6 +78,8 @@ final class SObjectPipeline implements SourcePipeline {
                 config.getInt(SourceConfig.PUBSUB_BATCH_SIZE));
         this.records = new SourceRecordFactory(sobject, config.topicFor(sobject));
         this.offset = SObjectOffset.fromMap(storedOffset);
+        this.heartbeat = new Heartbeat(config, sobject, cdcTopicName, SObjectOffset.partition(sobject));
+        heartbeat.persisted(offset.replayId());
         if (offset.mode() == SObjectOffset.Mode.SNAPSHOT
                 && (storedOffset == null || storedOffset.isEmpty())) {
             if (!config.getBoolean(SourceConfig.SNAPSHOT_ENABLED)) {
@@ -159,21 +167,60 @@ final class SObjectPipeline implements SourcePipeline {
         if (recoveryPending) {
             return recoverLostReplay();
         }
-        List<DecodedEvent> events;
-        try {
-            events = stream.poll(this::resumeOptions);
-        } catch (PubSubStreamException e) {
-            LOG.warn("CDC stream for {} lost its replay position ({}); applying sf.gap.recovery={}",
-                    sobject, e.getMessage(), config.gapRecovery());
-            lostReplay = e;
-            recoveryPending = true;
-            return recoverLostReplay();
+        if (pendingEvents.isEmpty()) {
+            try {
+                pendingEvents.addAll(stream.poll(this::resumeOptions));
+            } catch (PubSubStreamException e) {
+                LOG.warn("CDC stream for {} lost its replay position ({}); applying sf.gap.recovery={}",
+                        sobject, e.getMessage(), config.gapRecovery());
+                lostReplay = e;
+                recoveryPending = true;
+                return recoverLostReplay();
+            }
+            if (pendingEvents.isEmpty()) {
+                return followIdlePosition();
+            }
         }
         List<SourceRecord> out = new ArrayList<>();
-        for (DecodedEvent event : events) {
-            processEvent(event, out);
+        while (!pendingEvents.isEmpty()) {
+            DecodedEvent event = pendingEvents.peek();
+            byte[] replayIdBefore = offset.replayId();
+            Long commitTimestampBefore = offset.commitTimestamp();
+            List<SourceRecord> produced = new ArrayList<>();
+            try {
+                processEvent(event, produced);
+            } catch (RuntimeException e) {
+                // Processing this event failed (typically a REST or Bulk call). Keep the event
+                // and put the offset back, so it is retried in order and nothing overtakes it.
+                offset.setReplayId(replayIdBefore);
+                offset.setCommitTimestamp(commitTimestampBefore);
+                if (out.isEmpty()) {
+                    throw e;
+                }
+                LOG.warn("Processing a change event for {} failed ({}); delivering the {} records before "
+                        + "it and retrying", sobject, e.getMessage(), out.size());
+                break;
+            }
+            pendingEvents.remove();
+            out.addAll(produced);
+        }
+        if (!out.isEmpty()) {
+            heartbeat.persisted(offset.replayId());
         }
         return out;
+    }
+
+    /**
+     * Nothing to deliver: adopt the position from Salesforce's keepalive, so a reconnect does
+     * not resume from an event whose position has aged out, and persist it if heartbeats are on.
+     */
+    private List<SourceRecord> followIdlePosition() {
+        byte[] idle = stream.idlePosition();
+        if (idle == null) {
+            return List.of();
+        }
+        offset.setReplayId(idle);
+        return heartbeat.maybeEmit(idle, offset.toMap());
     }
 
     private void processEvent(DecodedEvent event, List<SourceRecord> out) throws InterruptedException {
@@ -356,14 +403,19 @@ final class SObjectPipeline implements SourcePipeline {
         }
         // RESYNC: record the stream's current position first, then re-read everything changed
         // since the watermark; resuming from the probe leaves no gap between the two.
-        byte[] probe = stream.probeLatestReplayId();
-        if (probe == null) {
-            return List.of(); // transient failure; retried on a later poll
+        if (recoveryProbe == null) {
+            recoveryProbe = stream.probeLatestReplayId();
+            if (recoveryProbe == null) {
+                return List.of(); // transient failure; retried on a later poll
+            }
         }
+        // A resync that fails is retried from the same probe: it predates every attempt, so
+        // nothing published while the resync was failing is skipped.
         offset.setReplayId(null);
-        offset.setProbeReplayId(probe);
+        offset.setProbeReplayId(recoveryProbe);
         List<SourceRecord> out = new ArrayList<>();
         resync(out);
+        recoveryProbe = null;
         recoveryPending = false;
         return out;
     }

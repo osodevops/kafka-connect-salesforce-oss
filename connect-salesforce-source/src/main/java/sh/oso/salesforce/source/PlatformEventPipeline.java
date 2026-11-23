@@ -27,6 +27,7 @@ final class PlatformEventPipeline implements SourcePipeline {
     private final ResilientSubscription stream;
     private final PlatformEventRecordFactory records;
     private final PlatformEventOffset offset;
+    private final Heartbeat heartbeat;
 
     private SubscribeOptions recoveryStart; // set after the stored position was rejected
 
@@ -41,6 +42,8 @@ final class PlatformEventPipeline implements SourcePipeline {
                 config.getInt(SourceConfig.PUBSUB_BATCH_SIZE));
         this.records = new PlatformEventRecordFactory(eventName, config.topicFor(eventName));
         this.offset = PlatformEventOffset.fromMap(storedOffset);
+        this.heartbeat = new Heartbeat(config, eventName, channel, PlatformEventOffset.partition(eventName));
+        heartbeat.persisted(offset.replayId());
         LOG.info("Pipeline for platform event {} starting ({})", eventName,
                 offset.replayId() != null ? "resuming from stored position" : "sf.event.start=" + config.eventStart());
     }
@@ -58,12 +61,29 @@ final class PlatformEventPipeline implements SourcePipeline {
         } catch (PubSubStreamException e) {
             return recoverLostReplay(e);
         }
+        if (events.isEmpty()) {
+            return followIdlePosition();
+        }
         List<SourceRecord> out = new ArrayList<>(events.size());
         for (DecodedEvent event : events) {
             offset.setReplayId(event.replayId());
             out.add(records.fromEvent(event, offset.toMap()));
         }
+        heartbeat.persisted(offset.replayId());
         return out;
+    }
+
+    /**
+     * Nothing to deliver: adopt the position from Salesforce's keepalive, so a reconnect does
+     * not resume from an event whose position has aged out, and persist it if heartbeats are on.
+     */
+    private List<SourceRecord> followIdlePosition() {
+        byte[] idle = stream.idlePosition();
+        if (idle == null) {
+            return List.of();
+        }
+        offset.setReplayId(idle);
+        return heartbeat.maybeEmit(idle, offset.toMap());
     }
 
     private SubscribeOptions resumeOptions() {

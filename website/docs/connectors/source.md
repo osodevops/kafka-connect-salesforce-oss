@@ -73,6 +73,51 @@ transaction) and expired replayIds apply the `sf.gap.recovery` strategy:
 | `latest` | Skip and resubscribe from newest (data loss accepted) |
 | `fail` | Stop the task |
 
+A transient Salesforce failure during recovery, a snapshot, a poll or a full-record fetch
+(HTTP 429 or 5xx, the org request limit, a dropped connection) is retried with backoff, from
+half a second up to one minute, for that SObject only. The task stays running, the other
+SObjects and platform events keep flowing, and the event being processed is retried in order,
+so nothing is lost or duplicated. A failure that retrying cannot fix (a missing object, a
+missing permission, a rejected query) fails the task with a message naming the SObject, after
+the records the other pipelines produced have been handed over.
+
+## Idle objects and heartbeats
+
+A replay position expires 72 hours after Salesforce issues it. The event bus is shared, so
+its position keeps moving while a quiet object receives nothing, and the position of that
+object's last change event ages out even though the stream is healthy. Salesforce reports
+the current position in the keepalive it sends on an idle subscription, within about 270
+seconds, and recommends resuming from it.
+
+The connector follows that position in two ways:
+
+- **In memory, always.** When Salesforce closes a stream (a routine event, several times a
+  day) the task resubscribes from the newest keepalive position, not from the last event. A
+  keepalive is used only when it is the last thing received and every earlier event has been
+  emitted, so no event is skipped.
+- **In the offset store, when `sf.heartbeat.interval.ms` is set.** Kafka Connect stores a
+  source offset only with a record, so the connector writes a small heartbeat record that
+  carries the keepalive position as its offset. A task restart, a rebalance or a worker
+  upgrade then resumes from it. Without heartbeats, a restart on an object that has been quiet
+  for more than 72 hours finds an expired position and applies `sf.gap.recovery`.
+
+Heartbeat records go to `sf.heartbeat.topic` (default `{sf.topic.prefix}.heartbeat`), at most
+one per stream per interval, and only when the position has moved. The key is the SObject or
+platform event name as configured; the value is:
+
+```json
+{
+  "name": "My_Object__c",
+  "channel": "/data/My_Object__ChangeEvent",
+  "replayId": "4093842",
+  "ts_ms": 1767225600000
+}
+```
+
+An interval of a few minutes (for example `300000`) is enough: the aim is to store a position
+well inside the 72-hour window. The heartbeat topic must exist or be auto-created, and the
+connector principal needs write access to it. Heartbeats are off by default (`0`).
+
 ## Platform Events
 
 :::info Available from version 0.2.1; use 0.2.2 or later
@@ -172,6 +217,8 @@ spend API quota on every event and could return a newer state than the event saw
 - When a stored position has expired, `sf.gap.recovery` applies. Platform events cannot be
   re-queried, so `resync` resubscribes from the earliest retained event, `latest` from the
   newest, and `fail` fails the task and keeps the offset.
+- A platform event that is published rarely is kept inside the retention window the same way
+  as a quiet SObject: see [Idle objects and heartbeats](#idle-objects-and-heartbeats).
 - Transient stream errors, expired sessions and missing events or permissions are handled
   as described in [Offsets & Recovery](../concepts/offsets-and-recovery.md).
 
@@ -237,6 +284,8 @@ Every property with types, defaults, and valid values — generated from the con
 | `sf.event.start` | enum | `latest` | Cold-start replay: `latest` (new events) or `all` (72h retention) |
 | `sf.gap.recovery` | enum | `resync` | `resync`, `latest`, or `fail` |
 | `sf.gap.resync.buffer.ms` | long | `60000` | Safety buffer subtracted from the resync watermark |
+| `sf.heartbeat.interval.ms` | long | `0` | Write a heartbeat record at most this often to store an idle stream's replay position; `0` disables. See [Idle objects and heartbeats](#idle-objects-and-heartbeats) |
+| `sf.heartbeat.topic` | string | `{prefix}.heartbeat` | Topic for heartbeat records |
 | `sf.full.record.on.update` | boolean | `false` | Fetch the full post-image via REST on every UPDATE (extra API call per update) |
 | `sf.emit.tombstone.on.delete` | boolean | `false` | Emit a tombstone record on DELETE (event-driven only) |
 | `sf.include.deleted` | boolean | `false` | Polling mode: include soft-deleted records via `queryAll` |

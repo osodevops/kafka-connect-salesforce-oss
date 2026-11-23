@@ -64,6 +64,44 @@ class PubSubClientTest {
     }
 
     @Test
+    void idleReplayIdIsTheKeepalivePositionOnlyOnceEverythingReceivedHasBeenDrained() throws Exception {
+        try (PubSubSubscription subscription = client.subscribe(SubscribeOptions.latest(TOPIC, 10))) {
+            assertThat(subscription.awaitEstablished(2000)).isTrue();
+            byte[] event = pubsub.publishEvent(TOPIC,
+                    TestSchemas.accountChangeEvent(schema, "UPDATE", "001A", 1000, "A"));
+            // An event has arrived since the last keepalive: no keepalive position is usable.
+            assertThat(subscription.idleReplayId()).isNull();
+
+            byte[] later = pubsub.advanceReplayPosition(TOPIC);
+            pubsub.sendKeepalive(TOPIC);
+            // The keepalive is newer than the buffered event, which has not been drained yet.
+            assertThat(subscription.idleReplayId()).isNull();
+
+            assertThat(subscription.poll(10, 2000)).extracting(DecodedEvent::replayId).containsExactly(event);
+            assertThat(subscription.idleReplayId()).isEqualTo(later);
+
+            pubsub.publishEvent(TOPIC, TestSchemas.accountChangeEvent(schema, "UPDATE", "001B", 2000, "B"));
+            assertThat(subscription.idleReplayId()).isNull();
+        }
+    }
+
+    @Test
+    void keepaliveIsNotSentWhileEventsAreStillWaitingForDemand() throws Exception {
+        byte[] first = pubsub.publishEvent(TOPIC,
+                TestSchemas.accountChangeEvent(schema, "CREATE", "001A", 1000, "A"));
+        pubsub.publishEvent(TOPIC, TestSchemas.accountChangeEvent(schema, "CREATE", "001B", 2000, "B"));
+        pubsub.publishEvent(TOPIC, TestSchemas.accountChangeEvent(schema, "CREATE", "001C", 3000, "C"));
+
+        // Batch size 1: 001C stays on the server until demand is topped up.
+        try (PubSubSubscription subscription = client.subscribe(SubscribeOptions.custom(TOPIC, first, 1))) {
+            assertThat(subscription.poll(1, 2000)).hasSize(1);
+            pubsub.sendKeepalive(TOPIC);
+            assertThat(subscription.idleReplayId()).isNull();
+            assertThat(subscription.poll(1, 2000)).hasSize(1);
+        }
+    }
+
+    @Test
     void subscribeCustomResumesAfterStoredReplayId() throws Exception {
         byte[] first = pubsub.publishEvent(TOPIC,
                 TestSchemas.accountChangeEvent(schema, "CREATE", "001A", 1000, "A"));
