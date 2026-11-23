@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.3](https://github.com/osodevops/kafka-connect-salesforce-oss/compare/v0.2.2...v0.2.3) (2026-11-22)
+
+
+### Bug Fixes
+
+* resolve custom object CDC channel and API name from sf.sobjects ([#48](https://github.com/osodevops/kafka-connect-salesforce-oss/issues/48)) ([049063d](https://github.com/osodevops/kafka-connect-salesforce-oss/commit/049063da2607865272b80ca39ee4fd62b5c12ead)), closes [#47](https://github.com/osodevops/kafka-connect-salesforce-oss/issues/47)
+
+
+### Documentation
+
+* add Sponsorship section and GitHub Sponsors funding link ([#49](https://github.com/osodevops/kafka-connect-salesforce-oss/issues/49)) ([903a728](https://github.com/osodevops/kafka-connect-salesforce-oss/commit/903a728afa37ab91bdf8b8c37f3c5e02982652ba))
+* list Platform Events in the source mode table and llms.txt ([#44](https://github.com/osodevops/kafka-connect-salesforce-oss/issues/44)) ([4feafd1](https://github.com/osodevops/kafka-connect-salesforce-oss/commit/4feafd1225adb7dcbdd02d2c74a0d4ef91ba5147))
+* recommend 0.2.2 or later for Platform Events ([#42](https://github.com/osodevops/kafka-connect-salesforce-oss/issues/42)) ([0dfa331](https://github.com/osodevops/kafka-connect-salesforce-oss/commit/0dfa3311cb38f883a68d8d77bbce84e93f894c2d))
+
 ## [0.2.2](https://github.com/osodevops/kafka-connect-salesforce-oss/compare/v0.2.1...v0.2.2) (2026-10-27)
 
 
