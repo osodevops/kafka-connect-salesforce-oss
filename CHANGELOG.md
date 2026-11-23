@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/osodevops/kafka-connect-salesforce-oss/compare/v0.2.3...v0.3.0) (2026-11-23)
+
+
+### Features
+
+* isolate transient pipeline failures and keep idle replay positions fresh ([#53](https://github.com/osodevops/kafka-connect-salesforce-oss/issues/53)) ([e9c5a69](https://github.com/osodevops/kafka-connect-salesforce-oss/commit/e9c5a694090bb5ced10d805eb89f84c884df26dd)), closes [#50](https://github.com/osodevops/kafka-connect-salesforce-oss/issues/50) [#51](https://github.com/osodevops/kafka-connect-salesforce-oss/issues/51)
+
 ## [0.2.3](https://github.com/osodevops/kafka-connect-salesforce-oss/compare/v0.2.2...v0.2.3) (2026-11-22)
 
 
