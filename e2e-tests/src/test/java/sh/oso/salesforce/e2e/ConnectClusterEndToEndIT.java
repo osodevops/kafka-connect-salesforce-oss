@@ -261,6 +261,95 @@ class ConnectClusterEndToEndIT {
         }
     }
 
+    /**
+     * On a real Connect worker: a transient Salesforce outage in the middle of processing an
+     * event leaves the task RUNNING and loses nothing, and an idle stream's keepalive position
+     * reaches the worker's offset store through a heartbeat record, so a restart resumes from it
+     * after the last event's own position has expired.
+     */
+    @Test
+    void sourceConnectorSurvivesTransientFailuresAndKeepsAnIdlePositionFresh() throws Exception {
+        String name = "salesforce-resilient-source";
+        String channel = "/data/ContactChangeEvent";
+        pubsub.createTopic(channel, cdcSchema);
+        sf.stubDescribe("Contact", TestSchemas.accountDescribeJson());
+        sf.wireMock().stubFor(com.github.tomakehurst.wiremock.client.WireMock.get(
+                        com.github.tomakehurst.wiremock.client.WireMock.urlPathMatching(
+                                "/services/data/v[^/]+/sobjects/Contact/003.*"))
+                .willReturn(com.github.tomakehurst.wiremock.client.WireMock.okJson(
+                        "{\"Name\":\"Full record\"}")));
+        var outage = sf.wireMock().stubFor(com.github.tomakehurst.wiremock.client.WireMock.get(
+                        com.github.tomakehurst.wiremock.client.WireMock.urlPathMatching(
+                                "/services/data/v[^/]+/sobjects/Contact/003B"))
+                .atPriority(1)
+                .willReturn(com.github.tomakehurst.wiremock.client.WireMock.aResponse().withStatus(503)));
+
+        registerConnector(name, Map.ofEntries(
+                Map.entry("connector.class", "sh.oso.salesforce.source.SalesforceSourceConnector"),
+                Map.entry("tasks.max", "1"),
+                Map.entry("sf.auth.grant.type", "client_credentials"),
+                Map.entry("sf.instance.url", "http://" + HOST_ALIAS + ":" + sf.port()),
+                Map.entry("sf.consumer.key", "k"),
+                Map.entry("sf.consumer.secret", "s"),
+                Map.entry("sf.token.endpoint",
+                        "http://" + HOST_ALIAS + ":" + sf.port() + "/services/oauth2/token"),
+                Map.entry("sf.pubsub.endpoint", HOST_ALIAS + ":" + pubsub.endpoint().split(":")[1]),
+                Map.entry("sf.pubsub.plaintext", "true"),
+                Map.entry("sf.sobjects", "Contact"),
+                Map.entry("sf.topic.prefix", "resilient"),
+                Map.entry("sf.snapshot.enabled", "false"),
+                Map.entry("sf.event.start", "all"),
+                Map.entry("sf.gap.recovery", "fail"),
+                Map.entry("sf.full.record.on.update", "true"),
+                Map.entry("sf.heartbeat.interval.ms", "1000")));
+        awaitConnectorRunning(name);
+
+        try (KafkaConsumer<String, String> data = consumer("resilient.Contact");
+             KafkaConsumer<String, String> heartbeats = consumer("resilient.heartbeat")) {
+            // 003B's full-record fetch answers HTTP 503 for a while.
+            pubsub.publishEvent(channel, TestSchemas.accountChangeEvent(cdcSchema, "UPDATE", "003A", 1_000, null));
+            pubsub.publishEvent(channel, TestSchemas.accountChangeEvent(cdcSchema, "UPDATE", "003B", 2_000, null));
+            pubsub.publishEvent(channel, TestSchemas.accountChangeEvent(cdcSchema, "UPDATE", "003C", 3_000, null));
+            List<ConsumerRecord<String, String>> delivered = new ArrayList<>(awaitRecords(data, 1));
+            delivered.addAll(drain(data, Duration.ofSeconds(6)));
+            assertThat(delivered).extracting(ConsumerRecord::key).containsExactly("003A");
+            awaitConnectorRunning(name); // the task did not fail
+
+            sf.wireMock().removeStub(outage);
+            delivered.addAll(awaitRecords(data, 2));
+            delivered.addAll(drain(data, Duration.ofSeconds(3)));
+            assertThat(delivered).extracting(ConsumerRecord::key).containsExactly("003A", "003B", "003C");
+            assertThat(MAPPER.readTree(delivered.get(1).value()).path("Name").asText()).isEqualTo("Full record");
+
+            // The object goes quiet while the event bus moves on: 003C's position expires.
+            byte[] keepalive = pubsub.advanceReplayPosition(channel);
+            pubsub.sendKeepalive(channel);
+            String expected = Base64.getEncoder().encodeToString(keepalive);
+            await().atMost(Duration.ofMinutes(1)).untilAsserted(() -> {
+                HttpResponse<String> response = http.send(HttpRequest.newBuilder(
+                                URI.create(connectUrl + "/connectors/" + name + "/offsets")).build(),
+                        HttpResponse.BodyHandlers.ofString());
+                JsonNode entry = MAPPER.readTree(response.body()).path("offsets").path(0);
+                assertThat(entry.path("partition").path("sobject").asText()).isEqualTo("Contact");
+                assertThat(entry.path("offset").path("replayId").asText()).isEqualTo(expected);
+            });
+            List<ConsumerRecord<String, String>> beats = awaitRecords(heartbeats, 1);
+            JsonNode beat = MAPPER.readTree(beats.get(beats.size() - 1).value());
+            assertThat(beats.get(0).key()).isEqualTo("Contact");
+            assertThat(beat.path("channel").asText()).isEqualTo(channel);
+            pubsub.expirePositionsBefore(channel, keepalive);
+
+            // With sf.gap.recovery=fail a rejected position would fail the task on restart.
+            restartConnector(name);
+            awaitConnectorRunning(name);
+            pubsub.publishEvent(channel, TestSchemas.accountChangeEvent(cdcSchema, "UPDATE", "003D", 4_000, null));
+            List<ConsumerRecord<String, String>> afterRestart = awaitRecords(data, 1);
+            afterRestart.addAll(drain(data, Duration.ofSeconds(3)));
+            assertThat(afterRestart).extracting(ConsumerRecord::key).containsExactly("003D");
+            awaitConnectorRunning(name);
+        }
+    }
+
     @Test
     void sinkConnectorWritesKafkaRecordsToFakeSalesforceViaBulk() throws Exception {
         registerConnector("salesforce-sink", Map.ofEntries(

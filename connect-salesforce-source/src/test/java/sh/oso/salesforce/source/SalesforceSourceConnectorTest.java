@@ -74,6 +74,36 @@ class SalesforceSourceConnectorTest {
     }
 
     @Test
+    void heartbeatIsOffByDefaultAndItsTopicFollowsThePrefix() {
+        SourceConfig config = new SourceConfig(withSObject(baseProps()));
+        assertThat(config.heartbeatIntervalMs()).isZero();
+        assertThat(config.heartbeatTopic()).isEqualTo("salesforce.heartbeat");
+    }
+
+    @Test
+    void rejectsNegativeHeartbeatInterval() {
+        Map<String, String> props = withSObject(baseProps());
+        props.put(SourceConfig.HEARTBEAT_INTERVAL_MS, "-1");
+        assertThatThrownBy(() -> new SalesforceSourceConnector().start(props))
+                .isInstanceOf(ConfigException.class);
+    }
+
+    @Test
+    void rejectsHeartbeatTopicThatIsAlsoADataTopic() {
+        Map<String, String> props = withSObject(baseProps());
+        props.put(SourceConfig.HEARTBEAT_INTERVAL_MS, "1000");
+        props.put(SourceConfig.HEARTBEAT_TOPIC, "salesforce.Account");
+        assertThatThrownBy(() -> new SalesforceSourceConnector().start(props))
+                .isInstanceOf(ConfigException.class)
+                .hasMessageContaining("salesforce.Account");
+    }
+
+    private static Map<String, String> withSObject(Map<String, String> props) {
+        props.put(SourceConfig.SOBJECTS, "Account");
+        return props;
+    }
+
+    @Test
     void rejectsLoginHostForClientCredentials() {
         Map<String, String> props = baseProps();
         props.put(SourceConfig.SOBJECTS, "Account");

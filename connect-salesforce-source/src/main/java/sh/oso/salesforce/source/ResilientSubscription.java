@@ -148,6 +148,14 @@ final class ResilientSubscription implements AutoCloseable {
         return null;
     }
 
+    /**
+     * The position from Salesforce's newest keepalive when the stream is idle and everything it
+     * delivered has been returned by {@link #poll}; null otherwise. Safe to resume from.
+     */
+    byte[] idlePosition() {
+        return subscription == null ? null : subscription.idleReplayId();
+    }
+
     private void closeProbe() {
         if (probe != null) {
             probe.close();

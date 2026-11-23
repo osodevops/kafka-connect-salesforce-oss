@@ -55,6 +55,8 @@ public class SourceConfig extends AbstractConfig {
     public static final String TOKEN_ENDPOINT = "sf.token.endpoint";
 
     // Internal: SObjects and platform events assigned to one task (set by the connector, not users).
+    public static final String HEARTBEAT_INTERVAL_MS = "sf.heartbeat.interval.ms";
+    public static final String HEARTBEAT_TOPIC = "sf.heartbeat.topic";
     public static final String TASK_SOBJECTS = "sf.task.sobjects";
     public static final String TASK_PLATFORM_EVENTS = "sf.task.platform.events";
 
@@ -142,6 +144,15 @@ public class SourceConfig extends AbstractConfig {
                         "Use plaintext gRPC (testing only).")
                 .define(TOKEN_ENDPOINT, Type.STRING, null, Importance.LOW,
                         "OAuth token endpoint override (testing only).")
+                .define(HEARTBEAT_INTERVAL_MS, Type.LONG, 0L, ConfigDef.Range.atLeast(0), Importance.MEDIUM,
+                        "How often, in milliseconds, to write a heartbeat record that stores the newest "
+                                + "replay position of an idle CDC or platform event stream, so a restart "
+                                + "resumes from it. Salesforce moves the position on while a quiet object "
+                                + "receives nothing, and the position of its last event expires after 72 "
+                                + "hours. 0 (the default) writes no heartbeat records; the task still follows "
+                                + "the position in memory when it reconnects.")
+                .define(HEARTBEAT_TOPIC, Type.STRING, "", Importance.LOW,
+                        "Kafka topic for heartbeat records. Default: {prefix}.heartbeat.")
                 .define(TASK_SOBJECTS, Type.LIST, "", Importance.LOW,
                         "Internal: SObjects assigned to this task.")
                 .define(TASK_PLATFORM_EVENTS, Type.LIST, "", Importance.LOW,
@@ -173,6 +184,15 @@ public class SourceConfig extends AbstractConfig {
         rejectDuplicates(SOBJECTS, sobjects);
         rejectSameApiName(sobjects);
         rejectDuplicates(PLATFORM_EVENTS, events);
+        if (heartbeatIntervalMs() > 0) {
+            for (String name : java.util.stream.Stream.concat(sobjects.stream(), events.stream()).toList()) {
+                if (topicFor(name).equals(heartbeatTopic())) {
+                    throw new ConfigException(HEARTBEAT_TOPIC, heartbeatTopic(),
+                            heartbeatTopic() + " is the data topic for " + name
+                                    + "; heartbeat records need a topic of their own");
+                }
+            }
+        }
         authConfig(); // validates flow-specific requirements
     }
 
@@ -238,6 +258,15 @@ public class SourceConfig extends AbstractConfig {
     // A task given only platform events has an empty SObject list, which must not mean "all".
     private boolean assignedByConnector() {
         return originals().containsKey(TASK_SOBJECTS) || originals().containsKey(TASK_PLATFORM_EVENTS);
+    }
+
+    public long heartbeatIntervalMs() {
+        return getLong(HEARTBEAT_INTERVAL_MS);
+    }
+
+    public String heartbeatTopic() {
+        String topic = getString(HEARTBEAT_TOPIC);
+        return topic == null || topic.isBlank() ? getString(TOPIC_PREFIX) + ".heartbeat" : topic.trim();
     }
 
     public String topicFor(String sobject) {

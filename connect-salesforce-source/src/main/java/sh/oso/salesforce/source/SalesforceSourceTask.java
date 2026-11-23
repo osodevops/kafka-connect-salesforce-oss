@@ -8,12 +8,14 @@ import org.slf4j.LoggerFactory;
 import sh.oso.salesforce.auth.SalesforceAuth;
 import sh.oso.salesforce.auth.SessionSupplier;
 import sh.oso.salesforce.bulk.BulkQueryClient;
+import sh.oso.salesforce.common.SalesforceException;
 import sh.oso.salesforce.http.SalesforceHttpClient;
 import sh.oso.salesforce.limits.RateGovernor;
 import sh.oso.salesforce.pubsub.PubSubClient;
 import sh.oso.salesforce.rest.RestClient;
 
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -28,6 +30,7 @@ public class SalesforceSourceTask extends SourceTask {
     private SourceConfig config;
     private PubSubClient pubsub;
     private final List<SourcePipeline> pipelines = new ArrayList<>();
+    private final Map<SourcePipeline, Backoff> backoffs = new IdentityHashMap<>();
     private FatalPipelineException fatal;
 
     @Override
@@ -73,8 +76,30 @@ public class SalesforceSourceTask extends SourceTask {
         List<SourceRecord> out = new ArrayList<>();
         ConnectException firstFailure = null;
         for (SourcePipeline pipeline : pipelines) {
+            Backoff backoff = backoffs.computeIfAbsent(pipeline, p -> new Backoff());
+            if (!backoff.ready()) {
+                continue; // retrying after a transient failure; the other pipelines keep flowing
+            }
             try {
-                out.addAll(pipeline.poll());
+                List<SourceRecord> produced = pipeline.poll();
+                out.addAll(produced);
+                if (!produced.isEmpty()) {
+                    backoff.reset();
+                }
+            } catch (SalesforceException e) {
+                // A REST or Bulk call failed inside the pipeline (snapshot, polling, full-record
+                // fetch, gap or lost-replay recovery).
+                if (e.isRetryable()) {
+                    long delay = backoff.failed();
+                    LOG.warn("Pipeline for {} hit a transient Salesforce failure ({}); retrying in {} ms. "
+                            + "Other pipelines are unaffected", pipeline.name(), e.getMessage(), delay);
+                } else {
+                    LOG.error("Pipeline for {} failed permanently", pipeline.name(), e);
+                    if (fatal == null) {
+                        fatal = new FatalPipelineException("Pipeline for " + pipeline.name()
+                                + " failed and retrying cannot fix it: " + e.getMessage(), e);
+                    }
+                }
             } catch (FatalPipelineException e) {
                 // Unrecoverable: hand over what the other pipelines produced, then fail the task.
                 LOG.error("Pipeline for {} failed permanently", pipeline.name(), e);

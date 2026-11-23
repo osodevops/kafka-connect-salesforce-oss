@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import sh.oso.salesforce.common.ErrorClassifier;
 import sh.oso.salesforce.common.SalesforceException;
 import sh.oso.salesforce.http.RequestSpec;
 import sh.oso.salesforce.http.SalesforceHttpClient;
@@ -100,8 +101,9 @@ public final class RestClient {
             return cached.describe;
         }
         if (response.statusCode() >= 400) {
+            String body = new String(response.body(), StandardCharsets.UTF_8);
             throw new SalesforceException("Describe of " + sobject + " failed: HTTP " + response.statusCode()
-                    + " " + new String(response.body(), StandardCharsets.UTF_8));
+                    + " " + body, null, isRetryable(response.statusCode(), body));
         }
         try {
             JsonNode describe = MAPPER.readTree(response.body());
@@ -134,7 +136,9 @@ public final class RestClient {
             return Optional.empty();
         }
         if (response.statusCode() >= 400) {
-            throw new SalesforceException("Retrieve " + sobject + "/" + id + " failed: HTTP " + response.statusCode());
+            String body = response.body() == null ? "" : new String(response.body(), StandardCharsets.UTF_8);
+            throw new SalesforceException("Retrieve " + sobject + "/" + id + " failed: HTTP "
+                    + response.statusCode(), null, isRetryable(response.statusCode(), body));
         }
         try {
             return Optional.of(MAPPER.readTree(response.body()));
@@ -217,6 +221,12 @@ public final class RestClient {
         List<JsonNode> out = new ArrayList<>();
         result.forEach(out::add);
         return out;
+    }
+
+    /** HTTP 429 and 5xx, and a 403 that is the org's request limit, may succeed on a later attempt. */
+    private static boolean isRetryable(int statusCode, String body) {
+        return ErrorClassifier.isRetryableHttp(statusCode,
+                body.contains("REQUEST_LIMIT_EXCEEDED") ? "REQUEST_LIMIT_EXCEEDED" : null);
     }
 
     private record CachedDescribe(JsonNode describe, String lastModified) {

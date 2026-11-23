@@ -44,6 +44,12 @@ Id/external-ID match so DLQ entries reference the right record.
 
 - Per-SObject pipelines are isolated: a failing object logs its error and other objects
   keep flowing; the task fails only when it has nothing else to deliver.
+- A transient REST or Bulk failure inside a pipeline (HTTP 429 or 5xx, the org request
+  limit, a dropped connection) is retried with backoff for that pipeline only, including
+  during gap and lost-replay recovery. Look for `hit a transient Salesforce failure` at WARN.
+- A REST or Bulk failure that retrying cannot fix (HTTP 400, 403 or 404) fails the task with
+  `Pipeline for <name> failed and retrying cannot fix it`, after the other pipelines' records
+  have been handed over.
 - Un-decodable events or missing `ChangeEventHeader` fail the task rather than dropping
   data (source connectors have no safe skip).
 - `errors.tolerance=all` on the source applies only to conversion/transform stages —
