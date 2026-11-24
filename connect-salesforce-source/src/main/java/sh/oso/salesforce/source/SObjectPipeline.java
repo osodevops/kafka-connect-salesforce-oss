@@ -15,6 +15,7 @@ import sh.oso.salesforce.pubsub.PubSubClient;
 import sh.oso.salesforce.pubsub.PubSubStreamException;
 import sh.oso.salesforce.pubsub.SubscribeOptions;
 import sh.oso.salesforce.rest.RestClient;
+import sh.oso.salesforce.schema.CsvValueConverter;
 import sh.oso.salesforce.schema.DescribeToConnect;
 
 import java.time.Instant;
@@ -270,7 +271,16 @@ final class SObjectPipeline implements SourcePipeline {
                 .orElse(event);
     }
 
-    /** Fills event fields that are null (and not explicitly nulled) from the REST post-image. */
+    /**
+     * Fills event fields that are null (and not explicitly nulled) from the REST post-image.
+     *
+     * <p>Change events carry date, datetime and time fields as Avro {@code long}, while REST
+     * returns them as ISO-8601 text ({@code 2024-01-31}, {@code 2024-01-31T09:30:00.000+0000},
+     * {@code 09:30:00.000Z}). They are converted the same way as snapshot and gap-recovery rows
+     * ({@link CsvValueConverter}): epoch millis, dates at midnight UTC, time-only fields as millis
+     * since midnight. A value that cannot be converted leaves that one field as the change event
+     * had it, so a single field can never fail the task.</p>
+     */
     private DecodedEvent mergePostImage(DecodedEvent event, JsonNode json) {
         GenericRecord payload = event.payload();
         for (org.apache.avro.Schema.Field field : payload.getSchema().getFields()) {
@@ -282,18 +292,23 @@ final class SObjectPipeline implements SourcePipeline {
                 continue;
             }
             org.apache.avro.Schema fieldSchema = ChangeEventUtils.unwrapNullable(field.schema());
-            switch (fieldSchema.getType()) {
-                case STRING, ENUM -> payload.put(field.name(), value.asText());
-                case LONG -> payload.put(field.name(), value.isNumber() ? value.asLong()
-                        : Instant.parse(value.asText().replaceAll("([+-]\\d{2})(\\d{2})$", "$1:$2"))
-                                .toEpochMilli());
-                case INT -> payload.put(field.name(), value.asInt());
-                case DOUBLE -> payload.put(field.name(), value.asDouble());
-                case FLOAT -> payload.put(field.name(), (float) value.asDouble());
-                case BOOLEAN -> payload.put(field.name(), value.asBoolean());
-                default -> {
-                    // leave complex types absent
+            try {
+                switch (fieldSchema.getType()) {
+                    case STRING, ENUM -> payload.put(field.name(), value.asText());
+                    case LONG -> payload.put(field.name(), value.isNumber() ? value.asLong()
+                            : CsvValueConverter.convert(Schema.OPTIONAL_INT64_SCHEMA, field.name(), value.asText()));
+                    case INT -> payload.put(field.name(), value.asInt());
+                    case DOUBLE -> payload.put(field.name(), value.asDouble());
+                    case FLOAT -> payload.put(field.name(), (float) value.asDouble());
+                    case BOOLEAN -> payload.put(field.name(), value.asBoolean());
+                    default -> {
+                        // leave complex types absent
+                    }
                 }
+            } catch (RuntimeException e) {
+                // Never log the value: it is record data.
+                LOG.warn("Could not convert field {} of {} from the full record ({}); keeping the change "
+                        + "event's value for that field", field.name(), sobject, e.getClass().getSimpleName());
             }
         }
         return event;
